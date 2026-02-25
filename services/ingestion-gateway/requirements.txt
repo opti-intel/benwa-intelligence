@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+pydantic-settings
+aiokafka
+asyncpg
+sqlalchemy[asyncio]
+httpx
+python-multipart
+redis

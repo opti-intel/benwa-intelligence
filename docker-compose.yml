@@ -1,0 +1,151 @@
+version: "3.9"
+
+services:
+  # --- Infrastructure ---
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    ports:
+      - "9093:9092"
+    environment:
+      # KRaft mode (no Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Cluster
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- Application Services ---
+
+  semantic-airlock:
+    build:
+      context: ./services
+      dockerfile: semantic-airlock/Dockerfile
+    ports:
+      - "${SEMANTIC_AIRLOCK_PORT:-8001}:8001"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  belief-state-engine:
+    build:
+      context: ./services
+      dockerfile: belief-state-engine/Dockerfile
+    ports:
+      - "${BELIEF_STATE_ENGINE_PORT:-8002}:8002"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  solver-engine:
+    build:
+      context: ./services
+      dockerfile: solver-engine/Dockerfile
+    ports:
+      - "${SOLVER_ENGINE_PORT:-8003}:8003"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  ingestion-gateway:
+    build:
+      context: ./services
+      dockerfile: ingestion-gateway/Dockerfile
+    ports:
+      - "${INGESTION_GATEWAY_PORT:-8004}:8004"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      - semantic-airlock
+      - belief-state-engine
+      - solver-engine
+      - ingestion-gateway
+    env_file: .env
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

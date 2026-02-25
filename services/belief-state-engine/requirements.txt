@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+pydantic-settings
+aiokafka
+asyncpg
+sqlalchemy[asyncio]
+httpx
+neo4j
+anthropic
+redis
+numpy
