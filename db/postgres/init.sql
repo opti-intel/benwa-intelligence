@@ -81,6 +81,19 @@ CREATE TABLE projects (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Tasks (construction tasks managed via dashboard)
+CREATE TABLE tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    naam VARCHAR(255) NOT NULL,
+    beschrijving TEXT DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'gepland',  -- 'gepland', 'bezig', 'klaar'
+    startdatum DATE,
+    einddatum DATE,
+    toegewezen_aan VARCHAR(255) DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX idx_ingestion_status ON ingestion_records(status);
 CREATE INDEX idx_ingestion_source ON ingestion_records(source_type);
@@ -89,3 +102,4 @@ CREATE INDEX idx_plans_project ON construction_plans(project_id);
 CREATE INDEX idx_plans_status ON construction_plans(status);
 CREATE INDEX idx_belief_entity ON belief_states(entity_type, entity_id);
 CREATE INDEX idx_solver_plan ON solver_results(plan_id);
+CREATE INDEX idx_tasks_status ON tasks(status);

@@ -1,22 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { type Taak, type TaakStatus, takenApi, loadTakenFromStorage, saveTakenToStorage } from '../hooks/useApi'
-
-const demoTaken: Taak[] = [
-  { id: '1', naam: 'Funderingswerk', beschrijving: 'Graven en storten van de fundering', status: 'klaar', startdatum: '2026-03-01', einddatum: '2026-03-14', toegewezen_aan: 'Jan de Vries' },
-  { id: '2', naam: 'Ruwbouw muren', beschrijving: 'Metselwerk voor alle draagmuren', status: 'bezig', startdatum: '2026-03-15', einddatum: '2026-04-10', toegewezen_aan: 'Pieter Bakker' },
-  { id: '3', naam: 'Dakconstructie', beschrijving: 'Plaatsen van dakspanten en dakbedekking', status: 'gepland', startdatum: '2026-04-11', einddatum: '2026-04-25', toegewezen_aan: 'Klaas Mulder' },
-  { id: '4', naam: 'Elektriciteit aanleggen', beschrijving: 'Bekabeling en groepenkast installeren', status: 'gepland', startdatum: '2026-04-15', einddatum: '2026-05-01', toegewezen_aan: 'Ahmed El Amrani' },
-  { id: '5', naam: 'Loodgieterij', beschrijving: 'Waterleiding en riolering aansluiten', status: 'gepland', startdatum: '2026-04-20', einddatum: '2026-05-05', toegewezen_aan: 'Willem Jansen' },
-  { id: '6', naam: 'Afwerking & schilderwerk', beschrijving: 'Stucwerk, schilderen en vloeren leggen', status: 'gepland', startdatum: '2026-05-06', einddatum: '2026-05-30', toegewezen_aan: 'Sophie van Dijk' },
-]
-
-function loadTaken(): Taak[] {
-  const stored = loadTakenFromStorage()
-  if (stored.length > 0) return stored
-  // Seed demo data on first load
-  saveTakenToStorage(demoTaken)
-  return demoTaken
-}
+import { type Taak, type TaakStatus, takenApi } from '../hooks/useApi'
 
 const statusLabels: Record<TaakStatus, string> = {
   gepland: 'Gepland',
@@ -33,8 +16,11 @@ const statusBadgeClass: Record<TaakStatus, string> = {
 type FilterStatus = 'alles' | TaakStatus
 
 function Taken() {
-  const [taken, setTaken] = useState<Taak[]>(loadTaken)
+  const [taken, setTaken] = useState<Taak[]>([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterStatus>('alles')
+  const [filterBedrijf, setFilterBedrijf] = useState<string>('alle')
+  const [zoek, setZoek] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editTaak, setEditTaak] = useState<Taak | null>(null)
 
@@ -46,24 +32,40 @@ function Taken() {
   const [formEind, setFormEind] = useState('')
   const [formToegewezen, setFormToegewezen] = useState('')
 
-  useEffect(() => { saveTakenToStorage(taken) }, [taken])
-
-  // Refresh when page regains focus (e.g. after creating tasks in Chat)
-  const refreshFromStorage = useCallback(() => {
-    const stored = loadTakenFromStorage()
-    if (stored.length > 0) setTaken(stored)
+  const fetchTaken = useCallback(async () => {
+    try {
+      const data = await takenApi.lijst()
+      setTaken(data)
+    } catch {
+      // keep current state on error
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  useEffect(() => {
-    window.addEventListener('focus', refreshFromStorage)
-    window.addEventListener('storage', refreshFromStorage)
-    return () => {
-      window.removeEventListener('focus', refreshFromStorage)
-      window.removeEventListener('storage', refreshFromStorage)
-    }
-  }, [refreshFromStorage])
+  useEffect(() => { fetchTaken() }, [fetchTaken])
 
-  const filtered = filter === 'alles' ? taken : taken.filter(t => t.status === filter)
+  useEffect(() => {
+    window.addEventListener('focus', fetchTaken)
+    return () => window.removeEventListener('focus', fetchTaken)
+  }, [fetchTaken])
+
+  // Unieke bedrijven
+  const alleBedrijven = [...new Set(taken.map(t => t.toegewezen_aan).filter((b): b is string => !!b))].sort()
+
+  // Filter + zoek
+  const gefilterd = taken.filter(t => {
+    if (filter !== 'alles' && t.status !== filter) return false
+    if (filterBedrijf !== 'alle' && t.toegewezen_aan !== filterBedrijf) return false
+    if (zoek) {
+      const q = zoek.toLowerCase().replace(/\s+/g, '')
+      const naam = t.naam.toLowerCase().replace(/\s+/g, '')
+      const bedrijf = (t.toegewezen_aan ?? '').toLowerCase().replace(/\s+/g, '')
+      const beschr = (t.beschrijving ?? '').toLowerCase().replace(/\s+/g, '')
+      if (!naam.includes(q) && !bedrijf.includes(q) && !beschr.includes(q)) return false
+    }
+    return true
+  })
 
   function openAdd() {
     setEditTaak(null)
@@ -87,35 +89,40 @@ function Taken() {
     setModalOpen(true)
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!formNaam.trim()) return
 
-    if (editTaak) {
-      setTaken(prev => prev.map(t =>
-        t.id === editTaak.id
-          ? { ...t, naam: formNaam, beschrijving: formBeschrijving, status: formStatus, startdatum: formStart, einddatum: formEind, toegewezen_aan: formToegewezen }
-          : t
-      ))
-    } else {
-      const newTaak: Taak = {
-        id: crypto.randomUUID(),
-        naam: formNaam,
-        beschrijving: formBeschrijving,
-        status: formStatus,
-        startdatum: formStart,
-        einddatum: formEind,
-        toegewezen_aan: formToegewezen,
+    const payload = {
+      naam: formNaam,
+      beschrijving: formBeschrijving,
+      status: formStatus,
+      startdatum: formStart,
+      einddatum: formEind,
+      toegewezen_aan: formToegewezen,
+    }
+
+    try {
+      if (editTaak) {
+        const updated = await takenApi.bijwerken(editTaak.id, payload)
+        setTaken(prev => prev.map(t => t.id === editTaak.id ? updated : t))
+      } else {
+        const created = await takenApi.aanmaken({ ...payload, id: crypto.randomUUID() })
+        setTaken(prev => [...prev, created])
       }
-      setTaken(prev => [...prev, newTaak])
-      // Fire-and-forget sync to ingestion API
-      takenApi.aanmaken(newTaak).catch(() => {})
+    } catch {
+      return
     }
     setModalOpen(false)
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!editTaak) return
-    setTaken(prev => prev.filter(t => t.id !== editTaak.id))
+    try {
+      await takenApi.verwijderen(editTaak.id)
+      setTaken(prev => prev.filter(t => t.id !== editTaak.id))
+    } catch {
+      return
+    }
     setModalOpen(false)
   }
 
@@ -138,7 +145,8 @@ function Taken() {
         <p>Beheer en volg projecttaken</p>
       </div>
 
-      <div className="filter-bar">
+      {/* Zoek + status filter + nieuwe taak */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
         <div className="tabs" style={{ marginBottom: 0 }}>
           {filters.map(f => (
             <button
@@ -150,30 +158,102 @@ function Taken() {
             </button>
           ))}
         </div>
+
+        <input
+          type="text"
+          placeholder="Zoek taak, beschrijving of bedrijf..."
+          value={zoek}
+          onChange={e => setZoek(e.target.value)}
+          style={{
+            background: 'var(--bg-white)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '8px 14px',
+            color: 'var(--text)',
+            fontSize: 14,
+            minWidth: 220,
+            marginLeft: 'auto',
+          }}
+        />
+
         <button className="primary" onClick={openAdd}>+ Nieuwe taak</button>
       </div>
 
-      <div className="grid-2">
-        {filtered.map(taak => (
-          <div key={taak.id} className="taak-card" onClick={() => openEdit(taak)}>
-            <div className="taak-card-header">
-              <span className="taak-card-naam">{taak.naam}</span>
-              <span className={`status-badge ${statusBadgeClass[taak.status]}`}>
-                {statusLabels[taak.status]}
-              </span>
-            </div>
-            {taak.beschrijving && (
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>{taak.beschrijving}</div>
-            )}
-            <div className="taak-card-meta">
-              <span>{formatDate(taak.startdatum)} — {formatDate(taak.einddatum)}</span>
-              {taak.toegewezen_aan && <span>Toegewezen aan: {taak.toegewezen_aan}</span>}
-            </div>
-          </div>
+      {/* Bedrijfsfilter */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <button
+          onClick={() => setFilterBedrijf('alle')}
+          style={{
+            padding: '6px 14px',
+            borderRadius: 20,
+            border: '1px solid var(--border)',
+            background: filterBedrijf === 'alle' ? 'var(--navy)' : 'var(--bg-white)',
+            color: filterBedrijf === 'alle' ? '#fff' : 'var(--text-muted)',
+            fontSize: 13,
+            fontWeight: filterBedrijf === 'alle' ? 700 : 400,
+            cursor: 'pointer',
+          }}
+        >
+          Alle bedrijven
+        </button>
+        {alleBedrijven.map(b => (
+          <button
+            key={b}
+            onClick={() => setFilterBedrijf(filterBedrijf === b ? 'alle' : b)}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 20,
+              border: `1px solid ${filterBedrijf === b ? 'var(--navy)' : 'var(--border)'}`,
+              background: filterBedrijf === b ? 'var(--navy)20' : 'var(--bg-white)',
+              color: filterBedrijf === b ? 'var(--navy)' : 'var(--text-muted)',
+              fontSize: 13,
+              fontWeight: filterBedrijf === b ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {b}
+          </button>
         ))}
       </div>
 
-      {filtered.length === 0 && (
+      {/* Teller */}
+      {!loading && (
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+          {gefilterd.length} {gefilterd.length === 1 ? 'taak' : 'taken'} gevonden
+          {taken.length !== gefilterd.length && ` (van ${taken.length} totaal)`}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="empty-state">Laden...</div>
+      ) : (
+        <div className="grid-2">
+          {gefilterd.map(taak => (
+            <div key={taak.id} className="taak-card" onClick={() => openEdit(taak)}>
+              <div className="taak-card-header">
+                <span className="taak-card-naam">{taak.naam}</span>
+                <span className={`status-badge ${statusBadgeClass[taak.status]}`}>
+                  {statusLabels[taak.status]}
+                </span>
+              </div>
+              {taak.beschrijving && (
+                <div style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 4 }}>{taak.beschrijving}</div>
+              )}
+              <div className="taak-card-meta">
+                <span>{formatDate(taak.startdatum)} — {formatDate(taak.einddatum)}</span>
+                {taak.toegewezen_aan && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span>👤</span>
+                    <span>{taak.toegewezen_aan}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && gefilterd.length === 0 && (
         <div className="empty-state">Geen taken gevonden voor dit filter.</div>
       )}
 
@@ -214,7 +294,26 @@ function Taken() {
 
             <div className="form-group">
               <label>Toegewezen aan</label>
-              <input type="text" value={formToegewezen} onChange={e => setFormToegewezen(e.target.value)} placeholder="Naam medewerker" />
+              {alleBedrijven.length > 0 ? (
+                <select
+                  value={formToegewezen}
+                  onChange={e => setFormToegewezen(e.target.value)}
+                >
+                  <option value="">— Kies bedrijf —</option>
+                  {alleBedrijven.map(b => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                  <option value="__nieuw__">+ Nieuw bedrijf invoeren</option>
+                </select>
+              ) : null}
+              {(alleBedrijven.length === 0 || formToegewezen === '__nieuw__') && (
+                <input
+                  type="text"
+                  value={formToegewezen === '__nieuw__' ? '' : formToegewezen}
+                  onChange={e => setFormToegewezen(e.target.value)}
+                  placeholder="Naam bedrijf of medewerker"
+                />
+              )}
             </div>
 
             <div className="modal-actions">

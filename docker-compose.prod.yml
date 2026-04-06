@@ -1,0 +1,147 @@
+# =============================================================================
+# Opti Intel — Productie Docker Compose
+# Gebruik: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Wat dit bestand toevoegt t.o.v. docker-compose.yml:
+#   1. Traefik als centrale reverse proxy met automatisch Let's Encrypt SSL
+#   2. Intern Docker-netwerk — alleen dashboard is bereikbaar van buiten
+#   3. Alle interne services (Postgres, Kafka, Redis, API's) zonder publieke poorten
+#   4. RAM/CPU-limieten per service
+# =============================================================================
+
+networks:
+  # Publiek netwerk: alleen Traefik en dashboard zitten hierop
+  opti-public:
+    driver: bridge
+  # Intern netwerk: alle services communiceren hierover, niet bereikbaar van buiten
+  opti-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  traefik-certs:   # Let's Encrypt certificaten
+  postgres_data:
+  redis_data:
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Traefik — centrale reverse proxy + automatisch HTTPS via Let's Encrypt
+  # ---------------------------------------------------------------------------
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    ports:
+      - "80:80"      # HTTP (wordt doorgestuurd naar HTTPS)
+      - "443:443"    # HTTPS
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    command:
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      # HTTP entrypoint — redirect alles naar HTTPS
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # HTTPS entrypoint
+      - "--entrypoints.websecure.address=:443"
+      # Let's Encrypt via HTTP challenge
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=b.waeghe1911@gmail.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Veiligheid: geen dashboard in productie
+      - "--api.dashboard=false"
+    networks:
+      - opti-public
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Kafka — intern only, geen publieke poort
+  # ---------------------------------------------------------------------------
+  kafka:
+    ports: []
+    networks:
+      - opti-internal
+    environment:
+      # Beperk heap zodat Kafka niet te veel RAM vreet
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"
+    mem_limit: 900m
+    cpus: "1.0"
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — intern only, nooit direct bereikbaar van buiten
+  # ---------------------------------------------------------------------------
+  postgres:
+    ports: []
+    networks:
+      - opti-internal
+    mem_limit: 512m
+    cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Redis — intern only
+  # ---------------------------------------------------------------------------
+  redis:
+    ports: []
+    networks:
+      - opti-internal
+    mem_limit: 128m
+    cpus: "0.2"
+
+  # ---------------------------------------------------------------------------
+  # API services — intern only, bereikbaar via dashboard-nginx proxy
+  # ---------------------------------------------------------------------------
+  semantic-airlock:
+    ports: []
+    networks:
+      - opti-internal
+    mem_limit: 400m
+    cpus: "0.5"
+
+  belief-state-engine:
+    ports: []
+    networks:
+      - opti-internal
+    mem_limit: 400m
+    cpus: "0.5"
+
+  solver-engine:
+    ports: []
+    networks:
+      - opti-internal
+    mem_limit: 400m
+    cpus: "0.5"
+
+  ingestion-gateway:
+    ports: []
+    networks:
+      - opti-internal
+    mem_limit: 400m
+    cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Dashboard — enige service die publiek bereikbaar is, via Traefik
+  # ---------------------------------------------------------------------------
+  dashboard:
+    ports: []
+    networks:
+      - opti-public    # voor Traefik
+      - opti-internal  # voor nginx proxy naar backend services
+    labels:
+      - "traefik.enable=true"
+      # Routing: opti-intel.nl en www.opti-intel.nl
+      - "traefik.http.routers.dashboard.rule=Host(`opti-intel.nl`) || Host(`www.opti-intel.nl`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.dashboard.loadbalancer.server.port=3000"
+      # Beveiligingsheaders
+      - "traefik.http.middlewares.security-headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.security-headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.browserXssFilter=true"
+      - "traefik.http.routers.dashboard.middlewares=security-headers"
+    mem_limit: 128m
+    cpus: "0.2"

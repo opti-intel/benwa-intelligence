@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { authHeaders } from './useAuth'
 
 interface ApiState<T> {
   data: T | null
@@ -43,7 +44,7 @@ export function useApi<T>(url: string, options?: { skip?: boolean }) {
 export async function apiPost<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify(body),
   })
   if (!res.ok) {
@@ -54,7 +55,7 @@ export async function apiPost<T>(url: string, body: unknown): Promise<T> {
 }
 
 export async function apiGet<T>(url: string): Promise<T> {
-  const res = await fetch(url)
+  const res = await fetch(url, { headers: authHeaders() })
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${res.statusText}`)
   }
@@ -173,12 +174,48 @@ export const chatApi = {
     }),
 }
 
+export async function apiPut<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HTTP ${res.status}: ${text}`)
+  }
+  return res.json()
+}
+
+export async function apiDelete(url: string): Promise<void> {
+  const res = await fetch(url, { method: 'DELETE', headers: authHeaders() })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HTTP ${res.status}: ${text}`)
+  }
+}
+
+export async function apiPatch<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`HTTP ${res.status}: ${text}`)
+  }
+  return res.json()
+}
+
 export const takenApi = {
-  aanmaken: (taak: Omit<Taak, 'id'>) =>
-    apiPost('/api/ingestion/ingest', {
-      source_type: 'task',
-      payload: taak,
-    }),
+  lijst: () => apiGet<Taak[]>('/api/ingestion/tasks'),
+  aanmaken: (taak: Omit<Taak, 'id'> & { id?: string }) =>
+    apiPost<Taak>('/api/ingestion/tasks', taak),
+  bijwerken: (id: string, taak: Omit<Taak, 'id'>) =>
+    apiPut<Taak>(`/api/ingestion/tasks/${id}`, taak),
+  verwijderen: (id: string) =>
+    apiDelete(`/api/ingestion/tasks/${id}`),
 }
 
 export const resourcesApi = {
@@ -192,24 +229,3 @@ export const planningApi = {
     apiPost('/api/solver/solve/schedule', { tasks: taken }),
 }
 
-// --- Shared localStorage helpers for cross-page task sync ---
-
-const TAKEN_STORAGE_KEY = 'benwa-taken'
-
-export function loadTakenFromStorage(): Taak[] {
-  const stored = localStorage.getItem(TAKEN_STORAGE_KEY)
-  if (stored) {
-    try { return JSON.parse(stored) } catch { /* fall through */ }
-  }
-  return []
-}
-
-export function saveTakenToStorage(taken: Taak[]) {
-  localStorage.setItem(TAKEN_STORAGE_KEY, JSON.stringify(taken))
-}
-
-export function addTaakToStorage(taak: Taak) {
-  const taken = loadTakenFromStorage()
-  taken.push(taak)
-  saveTakenToStorage(taken)
-}
