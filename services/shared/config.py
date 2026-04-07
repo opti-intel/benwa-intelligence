@@ -2,7 +2,10 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
+
+_DEFAULT_DB_URL = "postgresql+asyncpg://benwa:changeme@postgres:5432/benwa_intelligence"
 
 
 class Settings(BaseSettings):
@@ -21,7 +24,17 @@ class Settings(BaseSettings):
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
     postgres_db: str = "benwa_intelligence"
-    database_url: str = "postgresql+asyncpg://benwa:changeme@postgres:5432/benwa_intelligence"
+    database_url: str = _DEFAULT_DB_URL
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def ensure_async_db_url(cls, v: str) -> str:
+        """Ensure DATABASE_URL uses the asyncpg driver scheme required by SQLAlchemy async."""
+        if not v:
+            return _DEFAULT_DB_URL
+        if v.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + v[len("postgresql://"):]
+        return v
 
     # Redis
     redis_url: str = "redis://localhost:6379"
