@@ -30,6 +30,7 @@ from shared.db import engine
 from .parser import normalize_payload
 from .pdf_parser import parse_gantt_pdf
 from .tasks import router as tasks_router
+from .nl_parser import parse_bericht
 
 # ---------------------------------------------------------------------------
 # In-memory store
@@ -612,6 +613,33 @@ async def haal_berichten(andere_id: str, gebruiker: dict = Depends(get_huidige_g
     ]
 
 
+async def _verwerk_bericht_ai(tekst: str, afzender_naam: str) -> dict | None:
+    """Verwerk een chatbericht via de AI parser. Maak een taak aan als er een wordt herkend.
+    Geeft de taak terug als dict, of None als er niets gevonden werd."""
+    try:
+        resultaat = parse_bericht(tekst)
+        if not resultaat.get("heeft_taak"):
+            return None
+        taak = resultaat["taak"]
+        task_id = uuid4()
+        startdatum = _parse_date(taak.get("startdatum"))
+        einddatum = _parse_date(taak.get("einddatum"))
+        toegewezen = taak.get("toegewezen_aan") or afzender_naam
+        conn = await asyncpg.connect(_get_raw_db_url())
+        await conn.execute(
+            """INSERT INTO tasks (id, naam, beschrijving, status, startdatum, einddatum, toegewezen_aan)
+               VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING""",
+            task_id, taak["naam"], taak.get("beschrijving", ""),
+            "gepland", startdatum, einddatum, toegewezen,
+        )
+        await conn.close()
+        print(f"✅ AI taak via chat aangemaakt: {taak['naam']} (door {afzender_naam})", flush=True)
+        return {"id": str(task_id), "naam": taak["naam"], "antwoord": resultaat.get("antwoord")}
+    except Exception as e:
+        print(f"⚠️ AI chat parser fout: {e}", flush=True)
+        return None
+
+
 @app.post("/chat/berichten", status_code=201)
 async def stuur_bericht(data: NieuwBericht, gebruiker: dict = Depends(get_huidige_gebruiker)):
     """Stuurt een bericht naar een andere gebruiker."""
@@ -625,6 +653,10 @@ async def stuur_bericht(data: NieuwBericht, gebruiker: dict = Depends(get_huidig
         gebruiker["id"], data.naar_id, data.tekst.strip()
     )
     await conn.close()
+
+    # AI controleert het bericht op taken
+    ai_taak = await _verwerk_bericht_ai(data.tekst.strip(), gebruiker["naam"])
+
     return {
         "id": str(row["id"]),
         "van_id": str(row["van_id"]),
@@ -632,6 +664,7 @@ async def stuur_bericht(data: NieuwBericht, gebruiker: dict = Depends(get_huidig
         "tekst": row["tekst"],
         "gelezen": row["gelezen"],
         "tijdstip": row["tijdstip"].isoformat(),
+        "ai_taak": ai_taak,
     }
 
 
@@ -918,12 +951,17 @@ async def stuur_groepbericht(groep_naam: str, data: NieuwGroepBericht, gebruiker
         groep_naam, gebruiker["id"], data.tekst.strip()
     )
     await conn.close()
+
+    # AI controleert het bericht op taken
+    ai_taak = await _verwerk_bericht_ai(data.tekst.strip(), gebruiker["naam"])
+
     return {
         "id": str(row["id"]),
         "van_id": str(row["van_id"]),
         "van_naam": gebruiker["naam"],
         "tekst": row["tekst"],
         "tijdstip": row["tijdstip"].isoformat(),
+        "ai_taak": ai_taak,
     }
 
 
