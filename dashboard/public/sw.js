@@ -1,5 +1,5 @@
 // Opti Intel Service Worker
-const CACHE = 'opti-intel-v1';
+const CACHE = 'opti-intel-v2';
 
 // Bestanden die offline gecached worden
 const PRECACHE = [
@@ -18,6 +18,35 @@ self.addEventListener('activate', e => {
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
+  );
+});
+
+// ─── Push-meldingen ──────────────────────────────────────────────────────────
+
+self.addEventListener('push', e => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch { data = { tekst: e.data && e.data.text() }; }
+  e.waitUntil(
+    self.registration.showNotification(data.titel || 'Benwa Intelligence', {
+      body: data.tekst || 'Er is een planningswijziging.',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: data.url || '/' },
+      tag: data.taak_id || undefined, // meldingen over dezelfde taak stapelen niet
+    })
+  );
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(lijst => {
+      for (const client of lijst) {
+        if ('focus' in client) { client.navigate(url); return client.focus(); }
+      }
+      return clients.openWindow(url);
+    })
   );
 });
 

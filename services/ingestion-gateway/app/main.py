@@ -1,6 +1,7 @@
 """Ingestion Gateway - FastAPI service for raw data ingestion."""
 
 import asyncio
+import json
 import sys
 import os
 from contextlib import asynccontextmanager
@@ -31,6 +32,17 @@ from .parser import normalize_payload
 from .pdf_parser import parse_gantt_pdf
 from .tasks import router as tasks_router
 from .nl_parser import parse_bericht
+from .claude_parser import interpreteer_bericht
+from .cascade import router as cascade_router, verwerk_voorstel_relaties
+from .push import router as push_router, CREATE_PUSH_ABONNEMENTEN_TABLE
+from .mutaties import (
+    router as mutaties_router,
+    pas_mutatie_toe,
+    _betrokken_gebruiker_ids,
+    _melding_tekst,
+    _maak_meldingen,
+)
+from shared.config import get_settings
 
 # ---------------------------------------------------------------------------
 # In-memory store
@@ -125,6 +137,51 @@ CREATE_AANGEPASTE_GROEP_LEDEN_TABLE = """
     )
 """
 
+# Door Claude voorgestelde planningsmutaties. Een voorstel wordt opgeslagen met
+# status 'pending'; pas na bevestiging door een uitvoerder wordt het toegepast
+# op de tabel 'tasks' (zie mutaties.py).
+CREATE_VOORGESTELDE_MUTATIES_TABLE = """
+    CREATE TABLE IF NOT EXISTS voorgestelde_mutaties (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        bron VARCHAR(20) NOT NULL DEFAULT 'chat',
+        bron_bericht_id UUID,
+        afzender_id UUID,
+        afzender VARCHAR(255) NOT NULL DEFAULT '',
+        ruwe_tekst TEXT NOT NULL,
+        voorstel JSONB NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        aangemaakt_op TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        behandeld_door VARCHAR(255) DEFAULT '',
+        behandeld_op TIMESTAMP WITH TIME ZONE
+    )
+"""
+
+# Meldingen voor gebruikers die (direct of indirect) geraakt worden door een
+# bevestigde planningswijziging. Zie mutaties.py voor het aanmaken ervan.
+CREATE_MELDINGEN_TABLE = """
+    CREATE TABLE IF NOT EXISTS meldingen (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        gebruiker_id UUID NOT NULL,
+        tekst TEXT NOT NULL,
+        taak_id UUID,
+        voorstel_id UUID,
+        gelezen BOOLEAN DEFAULT FALSE,
+        tijdstip TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )
+"""
+
+# Volgorde-relaties tussen taken: de volger kan pas beginnen als de
+# voorganger klaar is. Gebruikt door cascade.py om taken automatisch
+# door te schuiven als een voorganger wordt verzet.
+CREATE_TAAK_AFHANKELIJKHEDEN_TABLE = """
+    CREATE TABLE IF NOT EXISTS taak_afhankelijkheden (
+        voorganger_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        volger_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        aangemaakt_op TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        PRIMARY KEY (voorganger_id, volger_id)
+    )
+"""
+
 
 async def _log_audit(actie: str, details: str = "", gebruiker_naam: str = "systeem",
                      gebruiker_email: str = "", ip_adres: str = ""):
@@ -174,16 +231,30 @@ async def ensure_tables():
             await conn.execute(CREATE_GROEPBERICHTEN_TABLE)
             await conn.execute(CREATE_AANGEPASTE_GROEPEN_TABLE)
             await conn.execute(CREATE_AANGEPASTE_GROEP_LEDEN_TABLE)
-            # Create default admin account if no users exist yet
+            await conn.execute(CREATE_VOORGESTELDE_MUTATIES_TABLE)
+            await conn.execute(CREATE_MELDINGEN_TABLE)
+            await conn.execute(CREATE_TAAK_AFHANKELIJKHEDEN_TABLE)
+            await conn.execute(CREATE_PUSH_ABONNEMENTEN_TABLE)
+            # Create default admin account if no users exist yet.
+            # Het wachtwoord MOET via de env-var ADMIN_INIT_WACHTWOORD komen;
+            # geen hardcoded default in de broncode. Zonder die var slaan we
+            # de seed over en loggen we een waarschuwing.
             count = await conn.fetchval("SELECT COUNT(*) FROM gebruikers")
             if count == 0:
-                admin_hash = hash_wachtwoord("admin123")
-                await conn.execute(
-                    """INSERT INTO gebruikers (naam, email, wachtwoord_hash, rol, bedrijf)
-                       VALUES ($1, $2, $3, $4, $5)""",
-                    "Beheerder", "admin@optiintel.nl", admin_hash, "admin", "Opti Corporation"
-                )
-                print("✅ Standaard admin aangemaakt: admin@optiintel.nl / admin123", flush=True)
+                admin_wachtwoord = os.environ.get("ADMIN_INIT_WACHTWOORD")
+                if admin_wachtwoord:
+                    admin_hash = hash_wachtwoord(admin_wachtwoord)
+                    await conn.execute(
+                        """INSERT INTO gebruikers (naam, email, wachtwoord_hash, rol, bedrijf)
+                           VALUES ($1, $2, $3, $4, $5)""",
+                        "Beheerder", "admin@optiintel.nl", admin_hash, "admin", "Opti Corporation"
+                    )
+                    print("✅ Standaard admin aangemaakt: admin@optiintel.nl "
+                          "(wachtwoord uit ADMIN_INIT_WACHTWOORD)", flush=True)
+                else:
+                    print("⚠️  ADMIN_INIT_WACHTWOORD niet gezet — admin-account NIET "
+                          "aangemaakt. Stel de env-var in om de seed uit te voeren.",
+                          flush=True)
             await conn.close()
             print("✅ Tabellen klaar", flush=True)
             return
@@ -292,6 +363,9 @@ async def list_records(
 
 
 app.include_router(tasks_router)
+app.include_router(mutaties_router)
+app.include_router(cascade_router)
+app.include_router(push_router)
 
 
 # ---------------------------------------------------------------------------
@@ -613,30 +687,99 @@ async def haal_berichten(andere_id: str, gebruiker: dict = Depends(get_huidige_g
     ]
 
 
-async def _verwerk_bericht_ai(tekst: str, afzender_naam: str) -> dict | None:
-    """Verwerk een chatbericht via de AI parser. Maak een taak aan als er een wordt herkend.
-    Geeft de taak terug als dict, of None als er niets gevonden werd."""
+async def _verwerk_bericht_ai(
+    tekst: str,
+    afzender_naam: str,
+    afzender_id: str | None = None,
+    bron: str = "chat",
+    bron_bericht_id: str | None = None,
+) -> dict | None:
+    """Laat Claude een chatbericht interpreteren en sla een herkende mutatie op
+    als VOORGESTELDE mutatie met status 'pending'.
+
+    De planning (tabel 'tasks') wordt hier NIET aangepast — dat gebeurt pas
+    nadat een uitvoerder het voorstel bevestigt (zie mutaties.py).
+
+    Geeft een dict met info over het voorstel terug, of None als er geen
+    planningsactie herkend werd.
+    """
     try:
-        resultaat = parse_bericht(tekst)
-        if not resultaat.get("heeft_taak"):
-            return None
-        taak = resultaat["taak"]
-        task_id = uuid4()
-        startdatum = _parse_date(taak.get("startdatum"))
-        einddatum = _parse_date(taak.get("einddatum"))
-        toegewezen = taak.get("toegewezen_aan") or afzender_naam
         conn = await asyncpg.connect(_get_raw_db_url())
-        await conn.execute(
-            """INSERT INTO tasks (id, naam, beschrijving, status, startdatum, einddatum, toegewezen_aan)
-               VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING""",
-            task_id, taak["naam"], taak.get("beschrijving", ""),
-            "gepland", startdatum, einddatum, toegewezen,
+        try:
+            # Bestaande taken meegeven als context, zodat Claude een wijziging
+            # aan een bestaande taak kan voorstellen i.p.v. een dubbele aan te maken.
+            taak_rows = await conn.fetch(
+                """SELECT id, naam, status, startdatum, einddatum, toegewezen_aan
+                   FROM tasks ORDER BY updated_at DESC LIMIT 50"""
+            )
+            bestaande_taken = [
+                {
+                    "id": str(r["id"]),
+                    "naam": r["naam"],
+                    "status": r["status"],
+                    "startdatum": r["startdatum"].isoformat() if r["startdatum"] else None,
+                    "einddatum": r["einddatum"].isoformat() if r["einddatum"] else None,
+                    "toegewezen_aan": r["toegewezen_aan"] or "",
+                }
+                for r in taak_rows
+            ]
+
+            voorstel = await interpreteer_bericht(tekst, afzender_naam, bestaande_taken)
+            if voorstel is None:
+                return None
+
+            voorstel_id = await conn.fetchval(
+                """INSERT INTO voorgestelde_mutaties
+                       (bron, bron_bericht_id, afzender_id, afzender, ruwe_tekst, voorstel)
+                   VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                   RETURNING id""",
+                bron, bron_bericht_id, afzender_id, afzender_naam, tekst, json.dumps(voorstel),
+            )
+
+            status = "pending"
+            task_id = None
+            meldingen = 0
+            # Autonome modus: pas het voorstel meteen toe en meld de betrokkenen,
+            # zonder te wachten op bevestiging door de zender.
+            if get_settings().autonome_modus:
+                try:
+                    task_id = await pas_mutatie_toe(conn, voorstel, afzender_naam)
+                    await conn.execute(
+                        """UPDATE voorgestelde_mutaties
+                           SET status = 'bevestigd', behandeld_door = 'AI (autonoom)', behandeld_op = NOW()
+                           WHERE id = $1""",
+                        voorstel_id,
+                    )
+                    ids, taak = await _betrokken_gebruiker_ids(conn, task_id, afzender_id)
+                    melding_tekst = _melding_tekst(voorstel.get("actie"), taak, afzender_naam)
+                    await _maak_meldingen(conn, ids, melding_tekst, task_id, str(voorstel_id))
+                    # Volgorde-relaties (komt_na) altijd vastleggen + cascade draaien.
+                    _, cascade_meldingen = await verwerk_voorstel_relaties(
+                        conn, voorstel, task_id, afzender_id, str(voorstel_id)
+                    )
+                    meldingen = len(ids) + cascade_meldingen
+                    status = "bevestigd"
+                except ValueError as e:
+                    print(f"⚠️ Autonoom toepassen mislukt, voorstel blijft pending: {e}", flush=True)
+        finally:
+            await conn.close()
+
+        print(
+            f"📝 Voorstel ({voorstel['actie']}) {status}: "
+            f"{voorstel.get('naam') or '—'} (door {afzender_naam})",
+            flush=True,
         )
-        await conn.close()
-        print(f"✅ AI taak via chat aangemaakt: {taak['naam']} (door {afzender_naam})", flush=True)
-        return {"id": str(task_id), "naam": taak["naam"], "antwoord": resultaat.get("antwoord")}
+        return {
+            "voorstel_id": str(voorstel_id),
+            "status": status,
+            "actie": voorstel["actie"],
+            "samenvatting": voorstel.get("samenvatting", ""),
+            "vertrouwen": voorstel.get("vertrouwen"),
+            "taak_id": task_id,
+            "meldingen_verstuurd": meldingen,
+        }
     except Exception as e:
-        print(f"⚠️ AI chat parser fout: {e}", flush=True)
+        print(f"⚠️ AI berichtverwerking fout: {e}", flush=True)
         return None
 
 
@@ -654,8 +797,11 @@ async def stuur_bericht(data: NieuwBericht, gebruiker: dict = Depends(get_huidig
     )
     await conn.close()
 
-    # AI controleert het bericht op taken
-    ai_taak = await _verwerk_bericht_ai(data.tekst.strip(), gebruiker["naam"])
+    # AI interpreteert het bericht en maakt eventueel een pending voorstel aan
+    ai_taak = await _verwerk_bericht_ai(
+        data.tekst.strip(), gebruiker["naam"],
+        afzender_id=gebruiker["id"], bron="chat", bron_bericht_id=str(row["id"]),
+    )
 
     return {
         "id": str(row["id"]),
@@ -952,8 +1098,11 @@ async def stuur_groepbericht(groep_naam: str, data: NieuwGroepBericht, gebruiker
     )
     await conn.close()
 
-    # AI controleert het bericht op taken
-    ai_taak = await _verwerk_bericht_ai(data.tekst.strip(), gebruiker["naam"])
+    # AI interpreteert het bericht en maakt eventueel een pending voorstel aan
+    ai_taak = await _verwerk_bericht_ai(
+        data.tekst.strip(), gebruiker["naam"],
+        afzender_id=gebruiker["id"], bron="groep", bron_bericht_id=str(row["id"]),
+    )
 
     return {
         "id": str(row["id"]),

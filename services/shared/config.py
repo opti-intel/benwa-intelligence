@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
 
+    # Autonome modus: als True worden door Claude herkende planningsmutaties
+    # meteen toegepast i.p.v. als 'pending' voorstel te wachten op bevestiging
+    # door de zender. Standaard uit (bevestigingsstap actief).
+    autonome_modus: bool = False
+
     # Neo4j
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_username: str = "neo4j"
@@ -45,6 +50,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # negeer .env-regels die hier niet gedefinieerd zijn
 
 
 @lru_cache()

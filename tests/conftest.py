@@ -40,11 +40,16 @@ _mock_neo4j_driver.session.return_value.__enter__ = MagicMock(return_value=_mock
 _mock_neo4j_driver.session.return_value.__exit__ = MagicMock(return_value=False)
 _mock_neo4j_driver.close = MagicMock()
 
-patch("shared.db.get_db", new=AsyncMock()).start()
+# get_db moet een echte (inspecteerbare) functie zijn: FastAPI leest de
+# signatuur bij het registreren van routes, en dat lukt niet op een kale Mock.
+async def _fake_get_db():
+    yield AsyncMock()
 
-# Solver-engine consumer — prevent Kafka background task
-patch("app.consumer.start_consumer", new=AsyncMock()).start()
-patch("app.consumer.stop_consumer", new=AsyncMock()).start()
+patch("shared.db.get_db", new=_fake_get_db).start()
+
+# (De solver-engine consumer wordt verderop gemockt, ná het toevoegen van
+# de service-map aan sys.path — eerder patchen kan niet omdat 'app' dan nog
+# niet importeerbaar is.)
 
 # ---------------------------------------------------------------------------
 # Import apps AFTER patching
@@ -89,9 +94,17 @@ ingestion_gateway_app = _import_service_app("ingestion-gateway")
 with patch("app.consumer.consume_raw_ingestion", new=AsyncMock()):
     pass  # semantic-airlock consumer already handled
 
+def _purge_app_modules():
+    """Verwijder gecachte 'app'-modules zodat 'app' opnieuw geladen wordt
+    vanuit de service-map die vooraan in sys.path staat."""
+    for m in [k for k in list(sys.modules) if k == "app" or k.startswith("app.")]:
+        del sys.modules[m]
+
+
 # Belief-state-engine needs Neo4j patches
 _bse_dir = os.path.join(SERVICES_DIR, "belief-state-engine")
 sys.path.insert(0, _bse_dir)
+_purge_app_modules()
 
 with patch.dict(os.environ, {"NEO4J_URI": "bolt://localhost:7687"}):
     with patch("app.graph.get_neo4j_driver", return_value=_mock_neo4j_driver):
@@ -101,6 +114,7 @@ with patch.dict(os.environ, {"NEO4J_URI": "bolt://localhost:7687"}):
 # Solver-engine
 _solver_dir = os.path.join(SERVICES_DIR, "solver-engine")
 sys.path.insert(0, _solver_dir)
+_purge_app_modules()
 
 with patch("app.consumer.start_consumer", new=AsyncMock()):
     with patch("app.consumer.stop_consumer", new=AsyncMock()):

@@ -1,5 +1,6 @@
 """Task CRUD endpoints — stores construction tasks in PostgreSQL."""
 
+from datetime import date
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -13,6 +14,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from shared.db import get_db
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _parse_date(val: Optional[str]) -> Optional[date]:
+    """'YYYY-MM-DD' string -> date object, of None.
+
+    Nodig omdat asyncpg een echt date-object verwacht voor een DATE-kolom;
+    een kale string geeft een DataError ('str' object has no attribute 'toordinal').
+    """
+    if not val:
+        return None
+    try:
+        return date.fromisoformat(val)
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -91,8 +106,8 @@ async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db)):
             "naam": task.naam,
             "beschrijving": task.beschrijving,
             "status": task.status,
-            "startdatum": task.startdatum or None,
-            "einddatum": task.einddatum or None,
+            "startdatum": _parse_date(task.startdatum),
+            "einddatum": _parse_date(task.einddatum),
             "toegewezen_aan": task.toegewezen_aan,
         },
     )
@@ -127,8 +142,8 @@ async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends
             "naam": task.naam,
             "beschrijving": task.beschrijving,
             "status": task.status,
-            "startdatum": task.startdatum or None,
-            "einddatum": task.einddatum or None,
+            "startdatum": _parse_date(task.startdatum),
+            "einddatum": _parse_date(task.einddatum),
             "toegewezen_aan": task.toegewezen_aan,
         },
     )

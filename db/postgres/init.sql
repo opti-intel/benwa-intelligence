@@ -103,3 +103,12 @@ CREATE INDEX idx_plans_status ON construction_plans(status);
 CREATE INDEX idx_belief_entity ON belief_states(entity_type, entity_id);
 CREATE INDEX idx_solver_plan ON solver_results(plan_id);
 CREATE INDEX idx_tasks_status ON tasks(status);
+
+-- Volgorde-relaties tussen taken: volger kan pas beginnen als voorganger klaar is
+CREATE TABLE taak_afhankelijkheden (
+    voorganger_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    volger_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    aangemaakt_op TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    PRIMARY KEY (voorganger_id, volger_id)
+);
+CREATE INDEX idx_afhankelijkheden_volger ON taak_afhankelijkheden(volger_id);

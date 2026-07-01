@@ -229,3 +229,105 @@ export const planningApi = {
     apiPost('/api/solver/solve/schedule', { tasks: taken }),
 }
 
+// --- Voorgestelde mutaties (AI-voorstellen die op bevestiging wachten) ---
+
+export interface VoorstelInhoud {
+  actie: 'taak_aanmaken' | 'taak_wijzigen' | 'geen'
+  doel_taak_id: string | null
+  naam: string | null
+  beschrijving: string | null
+  status: TaakStatus | null
+  startdatum: string | null
+  einddatum: string | null
+  toegewezen_aan: string | null
+  komt_na: string[] | null
+  vertrouwen: number
+  samenvatting: string
+}
+
+export interface VoorgesteldeMutatie {
+  id: string
+  bron: string
+  afzender: string
+  ruwe_tekst: string
+  voorstel: VoorstelInhoud
+  aangemaakt_op: string
+}
+
+export interface VerschovenTaak {
+  taak_id: string
+  naam: string
+  toegewezen_aan?: string
+  nieuwe_start: string
+  nieuwe_eind: string
+}
+
+export interface BevestigResultaat {
+  ok: boolean
+  status: string
+  taak_id: string
+  meldingen_verstuurd: number
+  automatisch_verschoven: VerschovenTaak[]
+}
+
+export const mutatiesApi = {
+  lijst: () => apiGet<VoorgesteldeMutatie[]>('/api/ingestion/mutaties'),
+  bevestig: (id: string) =>
+    apiPost<BevestigResultaat>(`/api/ingestion/mutaties/${id}/bevestig`, {}),
+  afwijs: (id: string) =>
+    apiPost<{ ok: boolean; status: string }>(`/api/ingestion/mutaties/${id}/afwijs`, {}),
+}
+
+// --- Volgorde-relaties (taak B kan pas beginnen als taak A klaar is) ---
+
+export interface AfhankelijkheidTaak {
+  id: string
+  naam: string
+  startdatum: string | null
+  einddatum: string | null
+}
+
+export interface Afhankelijkheden {
+  voorgangers: AfhankelijkheidTaak[]
+  volgers: AfhankelijkheidTaak[]
+}
+
+export const afhankelijkhedenApi = {
+  lijst: (taakId: string) =>
+    apiGet<Afhankelijkheden>(`/api/ingestion/taken/${taakId}/afhankelijkheden`),
+  toevoegen: (taakId: string, voorgangerId: string) =>
+    apiPost<{ ok: boolean; automatisch_verschoven: VerschovenTaak[] }>(
+      `/api/ingestion/taken/${taakId}/afhankelijkheden`,
+      { voorganger_id: voorgangerId },
+    ),
+  verwijderen: (taakId: string, voorgangerId: string) =>
+    apiDelete(`/api/ingestion/taken/${taakId}/afhankelijkheden/${voorgangerId}`),
+}
+
+// --- Meldingen ---
+
+export interface Melding {
+  id: string
+  tekst: string
+  taak_id: string | null
+  voorstel_id: string | null
+  gelezen: boolean
+  tijdstip: string
+}
+
+export const pushApi = {
+  publiekeSleutel: () =>
+    apiGet<{ publieke_sleutel: string }>('/api/ingestion/push/publieke-sleutel'),
+  abonneer: (abonnement: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    apiPost<{ ok: boolean }>('/api/ingestion/push/abonneer', abonnement),
+  afmelden: (endpoint: string) =>
+    apiPost<{ ok: boolean }>('/api/ingestion/push/afmelden', { endpoint }),
+}
+
+export const meldingenApi = {
+  lijst: () => apiGet<Melding[]>('/api/ingestion/meldingen'),
+  ongelezen: () => apiGet<{ ongelezen: number }>('/api/ingestion/meldingen/ongelezen'),
+  markeerGelezen: (id: string) =>
+    apiPost<{ ok: boolean }>(`/api/ingestion/meldingen/${id}/gelezen`, {}),
+}
+

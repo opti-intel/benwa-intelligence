@@ -13,9 +13,21 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 # ---------------------------------------------------------------------------
-# Config — override via environment variables in production
+# Config — JWT_SECRET_KEY is VERPLICHT via een environment variable.
+# Geen default in de broncode: de app faalt hard bij startup als de waarde
+# ontbreekt of te kort is.
 # ---------------------------------------------------------------------------
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "opti-intel-change-this-in-production-please")
+MIN_SECRET_LENGTE = 32
+
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+if not SECRET_KEY or len(SECRET_KEY) < MIN_SECRET_LENGTE:
+    raise RuntimeError(
+        "JWT_SECRET_KEY ontbreekt of is te kort. "
+        f"Stel een environment variable JWT_SECRET_KEY in van minimaal "
+        f"{MIN_SECRET_LENGTE} tekens (bijv. via `openssl rand -hex 32`). "
+        "De app start niet zonder een veilige sleutel."
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 12
 
