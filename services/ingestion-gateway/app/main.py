@@ -288,9 +288,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Alleen de eigen frontends mogen de API vanuit een browser aanroepen.
+# Extra origins (bv. een testomgeving) kun je toevoegen via de
+# environment variable CORS_EXTRA_ORIGINS (kommagescheiden).
+_cors_origins = [
+    "https://www.opti-intel.org",
+    "https://opti-intel.org",
+    "https://benwa-intelligence-production.up.railway.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
+]
+_cors_origins += [o.strip() for o in os.environ.get("CORS_EXTRA_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -322,7 +334,7 @@ class WachtwoordWijzig(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 @app.post("/ingest", response_model=IngestionRecord, status_code=201)
-async def ingest(request: IngestRequest):
+async def ingest(request: IngestRequest, gebruiker: dict = Depends(get_huidige_gebruiker)):
     normalized = normalize_payload(request.source_type, request.raw_payload)
     record = IngestionRecord(
         source_type=request.source_type,
@@ -346,7 +358,7 @@ async def ingest(request: IngestRequest):
 
 
 @app.get("/ingest/{record_id}", response_model=IngestionRecord)
-async def get_record(record_id: UUID):
+async def get_record(record_id: UUID, gebruiker: dict = Depends(get_huidige_gebruiker)):
     record = _records.get(record_id)
     if record is None:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -357,6 +369,7 @@ async def get_record(record_id: UUID):
 async def list_records(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    gebruiker: dict = Depends(get_huidige_gebruiker),
 ):
     all_records = sorted(_records.values(), key=lambda r: r.created_at, reverse=True)
     return all_records[offset : offset + limit]
@@ -372,9 +385,41 @@ app.include_router(push_router)
 # Auth endpoints
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Rem op inlogpogingen: max 5 mislukte pogingen per e-mail/IP per 15 minuten.
+# In-memory (per proces) — voldoende bij 1 replica; bij meerdere replicas kan
+# dit later naar Redis.
+# ---------------------------------------------------------------------------
+_LOGIN_POGINGEN: dict = {}  # sleutel -> lijst van tijdstippen (mislukt)
+_LOGIN_MAX_POGINGEN = 5
+_LOGIN_VENSTER_SECONDEN = 15 * 60
+
+
+def _login_geblokkeerd(sleutel: str) -> bool:
+    import time
+    nu = time.monotonic()
+    pogingen = [t for t in _LOGIN_POGINGEN.get(sleutel, []) if nu - t < _LOGIN_VENSTER_SECONDEN]
+    _LOGIN_POGINGEN[sleutel] = pogingen
+    return len(pogingen) >= _LOGIN_MAX_POGINGEN
+
+
+def _login_mislukt(sleutel: str):
+    import time
+    _LOGIN_POGINGEN.setdefault(sleutel, []).append(time.monotonic())
+
+
 @app.post("/auth/login")
 async def login(request: Request, form: OAuth2PasswordRequestForm = Depends()):
     ip = request.client.host if request.client else "onbekend"
+
+    blokkeer_sleutel = f"{form.username.lower().strip()}|{ip}"
+    if _login_geblokkeerd(blokkeer_sleutel):
+        await _log_audit("login_geblokkeerd", f"Te veel pogingen voor: {form.username}", ip_adres=ip)
+        raise HTTPException(
+            status_code=429,
+            detail="Te veel mislukte inlogpogingen. Probeer het over 15 minuten opnieuw.",
+        )
+
     raw_url = _get_raw_db_url()
     conn = await asyncpg.connect(raw_url)
     row = await conn.fetchrow(
@@ -384,12 +429,14 @@ async def login(request: Request, form: OAuth2PasswordRequestForm = Depends()):
     await conn.close()
 
     if not row or not row["actief"]:
+        _login_mislukt(blokkeer_sleutel)
         await _log_audit("login_mislukt", f"Onbekend e-mailadres: {form.username}", ip_adres=ip)
-        raise HTTPException(status_code=401, detail="Onbekend e-mailadres of account inactief")
+        raise HTTPException(status_code=401, detail="Onjuist e-mailadres of wachtwoord")
     if not verifieer_wachtwoord(form.password, row["wachtwoord_hash"]):
+        _login_mislukt(blokkeer_sleutel)
         await _log_audit("login_mislukt", f"Onjuist wachtwoord voor: {form.username}",
                          gebruiker_naam=row["naam"], gebruiker_email=form.username, ip_adres=ip)
-        raise HTTPException(status_code=401, detail="Onjuist wachtwoord")
+        raise HTTPException(status_code=401, detail="Onjuist e-mailadres of wachtwoord")
 
     token = maak_token({
         "sub": str(row["id"]),

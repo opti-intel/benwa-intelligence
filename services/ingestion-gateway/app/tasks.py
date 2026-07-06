@@ -13,6 +13,8 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from shared.db import get_db
 
+from .auth import get_huidige_gebruiker, vereist_admin
+
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
@@ -66,6 +68,7 @@ class TaskResponse(TaskBase):
 async def list_tasks(
     status: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_db),
+    gebruiker: dict = Depends(get_huidige_gebruiker),
 ):
     """Return all tasks, optionally filtered by status."""
     if status:
@@ -93,7 +96,8 @@ async def list_tasks(
 
 
 @router.post("", response_model=TaskResponse, status_code=201)
-async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db)):
+async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db),
+                      gebruiker: dict = Depends(get_huidige_gebruiker)):
     """Create a new task."""
     task_id = task.id or str(uuid4())
     await db.execute(
@@ -123,7 +127,8 @@ async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
-async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends(get_db)):
+async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends(get_db),
+                      gebruiker: dict = Depends(get_huidige_gebruiker)):
     """Update an existing task."""
     result = await db.execute(
         text("""
@@ -161,7 +166,8 @@ async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends
 
 
 @router.delete("/{task_id}", status_code=204)
-async def delete_task(task_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_task(task_id: str, db: AsyncSession = Depends(get_db),
+                      _admin: dict = Depends(vereist_admin)):
     """Delete a task."""
     result = await db.execute(
         text("DELETE FROM tasks WHERE id = :id"),

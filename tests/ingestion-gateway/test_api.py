@@ -10,6 +10,43 @@ SERVICES_DIR = os.path.join(REPO_ROOT, "services")
 sys.path.insert(0, os.path.join(SERVICES_DIR, "ingestion-gateway"))
 sys.path.insert(0, SERVICES_DIR)
 
+from app.auth import maak_token
+
+
+def _auth_headers(rol: str = "medewerker") -> dict:
+    """Geldige Authorization-header voor tests (endpoints vereisen inloggen)."""
+    token = maak_token({
+        "sub": "00000000-0000-0000-0000-000000000001",
+        "naam": "Testgebruiker",
+        "rol": rol,
+        "bedrijf": "Testbedrijf",
+    })
+    return {"Authorization": f"Bearer {token}"}
+
+
+class TestAuthVereist:
+    """De ingest- en tasks-endpoints mogen NIET zonder login bereikbaar zijn."""
+
+    @pytest.mark.asyncio
+    async def test_ingest_zonder_login_geweigerd(self, ingestion_gateway_client):
+        response = await ingestion_gateway_client.post(
+            "/ingest", json={"source_type": "bim", "raw_payload": {}},
+        )
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_tasks_zonder_login_geweigerd(self, ingestion_gateway_client):
+        response = await ingestion_gateway_client.get("/tasks")
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_task_verwijderen_vereist_admin(self, ingestion_gateway_client):
+        response = await ingestion_gateway_client.delete(
+            "/tasks/00000000-0000-0000-0000-000000000002",
+            headers=_auth_headers(rol="medewerker"),
+        )
+        assert response.status_code == 403
+
 
 class TestIngestEndpoint:
     """Tests for POST /ingest."""
@@ -18,6 +55,7 @@ class TestIngestEndpoint:
     async def test_ingest_valid_bim_payload(self, ingestion_gateway_client):
         response = await ingestion_gateway_client.post(
             "/ingest",
+            headers=_auth_headers(),
             json={
                 "source_type": "bim",
                 "source_uri": "s3://models/building-a.ifc",
@@ -39,6 +77,7 @@ class TestIngestEndpoint:
     async def test_ingest_sensor_data(self, ingestion_gateway_client):
         response = await ingestion_gateway_client.post(
             "/ingest",
+            headers=_auth_headers(),
             json={
                 "source_type": "sensor",
                 "raw_payload": {
@@ -58,6 +97,7 @@ class TestIngestEndpoint:
         """Unknown source types should still be accepted with normalized=False."""
         response = await ingestion_gateway_client.post(
             "/ingest",
+            headers=_auth_headers(),
             json={
                 "source_type": "lidar",
                 "raw_payload": {"points": [1, 2, 3]},
@@ -73,6 +113,7 @@ class TestIngestEndpoint:
         """Omitting required fields should trigger validation error."""
         response = await ingestion_gateway_client.post(
             "/ingest",
+            headers=_auth_headers(),
             json={"source_type": "bim"},
         )
 
@@ -84,7 +125,7 @@ class TestListRecordsEndpoint:
 
     @pytest.mark.asyncio
     async def test_list_records_empty(self, ingestion_gateway_client):
-        response = await ingestion_gateway_client.get("/ingest")
+        response = await ingestion_gateway_client.get("/ingest", headers=_auth_headers())
 
         assert response.status_code == 200
         body = response.json()
@@ -95,13 +136,14 @@ class TestListRecordsEndpoint:
         # Ingest a record first
         await ingestion_gateway_client.post(
             "/ingest",
+            headers=_auth_headers(),
             json={
                 "source_type": "document",
                 "raw_payload": {"content": "specification text", "doc_type": "spec"},
             },
         )
 
-        response = await ingestion_gateway_client.get("/ingest")
+        response = await ingestion_gateway_client.get("/ingest", headers=_auth_headers())
 
         assert response.status_code == 200
         body = response.json()
