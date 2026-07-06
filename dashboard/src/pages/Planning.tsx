@@ -73,6 +73,18 @@ function Planning() {
   const [filterBedrijf, setFilterBedrijf] = useState<string>('alle')
   const [zoek, setZoek] = useState('')
 
+  // Mobiel: één dag tegelijk tonen i.p.v. vijf smalle kolommen
+  const [isMobiel, setIsMobiel] = useState(window.innerWidth < 768)
+  const [gekozenDag, setGekozenDag] = useState<number>(() => {
+    const d = new Date().getDay() // 1 = ma ... 5 = vr
+    return d >= 1 && d <= 5 ? d - 1 : 0
+  })
+  useEffect(() => {
+    const f = () => setIsMobiel(window.innerWidth < 768)
+    window.addEventListener('resize', f)
+    return () => window.removeEventListener('resize', f)
+  }, [])
+
   const laadTaken = useCallback(async () => {
     setLaden(true)
     try {
@@ -497,7 +509,7 @@ function Planning() {
       </div>
 
       {/* Weekstatistieken */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobiel ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Taken deze week', waarde: weekStats.totaal, kleur: 'var(--text)' },
           { label: 'Gepland', waarde: weekStats.gepland, kleur: 'var(--blue)' },
@@ -515,6 +527,87 @@ function Planning() {
       {laden ? (
         <div className="card" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
           Taken laden...
+        </div>
+      ) : isMobiel ? (
+        /* ── Mobiel: dag-selector + één dag als lijst ─────────────────── */
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, marginBottom: 14 }}>
+            {weekDagen.map((dag, i) => {
+              const actief = i === gekozenDag
+              const isVandaag = toISO(dag) === vandaagISO
+              return (
+                <button
+                  key={i}
+                  onClick={() => setGekozenDag(i)}
+                  style={{
+                    padding: '10px 0', borderRadius: 8, cursor: 'pointer',
+                    border: `1px solid ${actief ? 'var(--navy)' : isVandaag ? 'var(--navy)' : 'var(--border)'}`,
+                    background: actief ? 'var(--navy)' : 'var(--bg-white)',
+                    color: actief ? '#fff' : 'var(--text)',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{DAGEN[i]}</div>
+                  <div style={{ fontSize: 11, opacity: 0.75, marginTop: 1 }}>
+                    {dag.getDate()} {dag.toLocaleDateString('nl-NL', { month: 'short' })}
+                  </div>
+                  {takenPerDag[i].length > 0 && (
+                    <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, color: actief ? '#fff' : 'var(--navy)' }}>
+                      {takenPerDag[i].length} {takenPerDag[i].length === 1 ? 'taak' : 'taken'}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {takenPerDag[gekozenDag].length === 0 ? (
+            <div className="card" style={{ textAlign: 'center', padding: 30, color: 'var(--text-muted)' }}>
+              Geen taken op {DAGEN[gekozenDag].toLowerCase()} {weekDagen[gekozenDag].getDate()} {weekDagen[gekozenDag].toLocaleDateString('nl-NL', { month: 'short' })}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {takenPerDag[gekozenDag].map(taak => {
+                const stijl = statusStijl[taak.status] ?? statusStijl.gepland
+                const start = taak.startdatum ? taak.startdatum.slice(0, 10) : ''
+                const eind = taak.einddatum ? taak.einddatum.slice(0, 10) : start
+                return (
+                  <div
+                    key={taak.id}
+                    onClick={() => openTaak(taak)}
+                    style={{
+                      background: 'var(--bg-white)',
+                      border: '1px solid var(--border)',
+                      borderLeft: `4px solid ${stijl.dot}`,
+                      borderRadius: 8,
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>
+                        {taak.naam}
+                      </div>
+                      <span style={{
+                        background: stijl.bg, color: stijl.text, flexShrink: 0,
+                        borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 600,
+                      }}>
+                        {stijl.label}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12.5, color: 'var(--text-sub)', marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                      {taak.toegewezen_aan && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <User size={12} /> {taak.toegewezen_aan}
+                        </span>
+                      )}
+                      {start && <span>{start === eind ? start : `${start} t/m ${eind}`}</span>}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       ) : (
         <div style={{
