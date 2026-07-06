@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, NavLink, Navigate, useLocation } from 'react-router-dom'
 import { Menu, X, LayoutDashboard, MessageCircle, Calendar, CheckSquare, FileText, Users, Database, LogOut } from 'lucide-react'
-import optiIntelLogo from './assets/opti-intel-logo.svg'
+import logo from './assets/logo.svg'
 import Dashboard from './pages/Dashboard'
 import Chat from './pages/Chat'
 import Planning from './pages/Planning'
@@ -64,11 +64,12 @@ function App() {
   const sidebarInhoud = (
     <>
       <div className="sidebar-header">
-        <img
-          src={optiIntelLogo}
-          alt="Opti Intel"
-          style={{ width: '100%', maxWidth: 160, display: 'block', margin: '0 auto 4px' }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '4px 0' }}>
+          <img src={logo} alt="Opti-Intel" style={{ height: 28, display: 'block' }} />
+          <span style={{ fontSize: 17, fontWeight: 700, color: '#fff', letterSpacing: 0.2 }}>
+            Opti-Intel
+          </span>
+        </div>
       </div>
 
       <nav className="sidebar-nav">
@@ -112,7 +113,7 @@ function App() {
         </button>
       </div>
 
-      <div className="sidebar-footer">v0.5.1</div>
+      <div className="sidebar-footer">v0.5.2</div>
     </>
   )
 
@@ -171,11 +172,10 @@ function App() {
             >
               <Menu size={26} />
             </button>
-            <img
-              src={optiIntelLogo}
-              alt="Opti Intel"
-              style={{ flex: 1, height: 52, width: '100%', objectFit: 'contain', padding: '0 12px' }}
-            />
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+              <img src={logo} alt="Opti-Intel" style={{ height: 28, display: 'block' }} />
+              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Opti-Intel</span>
+            </div>
             <div style={{ width: 34, flexShrink: 0 }} />
           </header>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import optiIntelLogo from '../assets/opti-intel-logo.svg'
+import logo from '../assets/logo.svg'
 
 function Login() {
   const { login } = useAuth()
@@ -50,7 +50,7 @@ function Login() {
             borderRadius: 12,
             padding: '10px 18px',
           }}>
-            <img src={optiIntelLogo} alt="Opti Intel" style={{ width: 120 }} />
+            <img src={logo} alt="Opti-Intel" style={{ width: 96, display: 'block' }} />
           </div>
         </div>
 

@@ -223,7 +223,7 @@ export default function Chat() {
     if (document.visibilityState === 'visible') return // app is open en actief
     new Notification(`Nieuw bericht van ${naam}`, {
       body: tekst.length > 80 ? tekst.slice(0, 80) + '…' : tekst,
-      icon: '/opti-intel-logo.svg',
+      icon: '/logo.svg',
       tag: `chat-${naam}`, // voorkomt dubbele meldingen
     })
   }
