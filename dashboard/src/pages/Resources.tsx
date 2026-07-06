@@ -140,7 +140,7 @@ export default function Resources() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text)' }}>{r.naam}</div>
                   {r.functie && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.functie}</div>}
-                  {r.toegewezen_taken.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>📋 {r.toegewezen_taken.join(', ')}</div>}
+                  {r.toegewezen_taken.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Taken: {r.toegewezen_taken.join(', ')}</div>}
                 </div>
                 <span style={{ fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 12, flexShrink: 0, background: r.beschikbaarheid ? 'var(--green-bg)' : 'var(--red-bg)', color: r.beschikbaarheid ? 'var(--green)' : 'var(--red)' }}>
                   {r.beschikbaarheid ? 'Beschikbaar' : 'Bezet'}

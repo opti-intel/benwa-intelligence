@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { User } from 'lucide-react'
 import { type Taak, type TaakStatus, takenApi } from '../hooks/useApi'
 
 const statusLabels: Record<TaakStatus, string> = {
@@ -243,7 +244,7 @@ function Taken() {
                 <span>{formatDate(taak.startdatum)} — {formatDate(taak.einddatum)}</span>
                 {taak.toegewezen_aan && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span>👤</span>
+                    <User size={12} style={{ flexShrink: 0 }} />
                     <span>{taak.toegewezen_aan}</span>
                   </span>
                 )}

@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
   Circle, CheckCircle, Flame, AlertTriangle, ChevronRight,
-  Clock, Search, X,
+  Clock, Search, X, Check,
+  CalendarDays, CalendarRange, MessageSquare, CheckSquare, FileText,
 } from 'lucide-react'
 import { type Taak, takenApi } from '../hooks/useApi'
 
@@ -324,7 +325,9 @@ function Dashboard() {
         {/* Vandaag */}
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header">
-            <h3>📅 Vandaag</h3>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CalendarDays size={16} style={{ color: 'var(--navy)' }} /> Vandaag
+            </h3>
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {new Date().toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
               {zoekterm && <> · filter: <em>"{zoekterm}"</em></>}
@@ -427,7 +430,9 @@ function Dashboard() {
         {/* Deze week */}
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header">
-            <h3>📆 Deze week</h3>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CalendarRange size={16} style={{ color: 'var(--navy)' }} /> Deze week
+            </h3>
             <button
               onClick={() => navigate('/planning')}
               style={{ fontSize: 12, color: 'var(--navy)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
@@ -655,8 +660,8 @@ function Dashboard() {
                 background: 'var(--green-bg)', border: '1px solid var(--green)40',
                 borderRadius: 10, padding: 14, marginTop: 8,
               }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>
-                  ✅ Verwacht resultaat
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--green)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <CheckCircle size={13} /> Verwacht resultaat
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-sub)', lineHeight: 1.5 }}>
                   Vertraging beperkt van 5 naar 2 werkdagen. Opleverdatum blijft haalbaar.
@@ -676,7 +681,9 @@ function Dashboard() {
                   border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer',
                 }}
               >
-                ✓ Oplossing accepteren
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center', width: '100%' }}>
+                  <Check size={14} /> Oplossing accepteren
+                </span>
               </button>
               <button
                 onClick={() => setActieveOplossing(null)}
@@ -695,13 +702,15 @@ function Dashboard() {
       {/* ── Snelkoppelingen ───────────────────────────────────────────────── */}
       <div className="quick-links">
         {[
-          { to: '/chat',     icon: '💬', label: 'Chat',      desc: 'Taak invoeren via chat' },
-          { to: '/planning', icon: '📅', label: 'Planning',  desc: 'Weekoverzicht bekijken' },
-          { to: '/taken',    icon: '✅', label: 'Taken',     desc: 'Alle taken beheren' },
-          { to: '/pdf',      icon: '📄', label: 'PDF Invoer', desc: 'Planning importeren' },
+          { to: '/chat',     Icoon: MessageSquare, label: 'Chat',      desc: 'Taak invoeren via chat' },
+          { to: '/planning', Icoon: CalendarDays,  label: 'Planning',  desc: 'Weekoverzicht bekijken' },
+          { to: '/taken',    Icoon: CheckSquare,   label: 'Taken',     desc: 'Alle taken beheren' },
+          { to: '/pdf',      Icoon: FileText,      label: 'PDF Invoer', desc: 'Planning importeren' },
         ].map(link => (
           <Link key={link.to} to={link.to} className="quick-link-card">
-            <div style={{ fontSize: 24, marginBottom: 6 }}>{link.icon}</div>
+            <div style={{ marginBottom: 8 }}>
+              <link.Icoon size={22} style={{ color: 'var(--navy)' }} />
+            </div>
             <div className="quick-link-label">{link.label}</div>
             <div className="quick-link-desc">{link.desc}</div>
           </Link>

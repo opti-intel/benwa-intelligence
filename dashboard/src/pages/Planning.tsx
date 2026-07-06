@@ -11,6 +11,7 @@ import {
   afhankelijkhedenApi,
 } from '../hooks/useApi'
 import { usePush } from '../hooks/usePush'
+import { Bell, BellOff, Check, Inbox, Link2, User, X } from 'lucide-react'
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -57,9 +58,9 @@ function taakOpDag(taak: Taak, dagISO: string): boolean {
 // ─── status styling ─────────────────────────────────────────────────────────
 
 const statusStijl: Record<string, { bg: string; text: string; dot: string; label: string }> = {
-  gepland:  { bg: '#1e1b4b', text: '#a5b4fc', dot: 'var(--purple)', label: 'Gepland' },
-  bezig:    { bg: '#1e3a5f', text: '#7dd3fc', dot: 'var(--teal)', label: 'Bezig' },
-  klaar:    { bg: '#14532d', text: '#86efac', dot: '#4ade80', label: 'Klaar' },
+  gepland:  { bg: 'var(--blue-bg)',   text: 'var(--blue)',   dot: 'var(--blue)',   label: 'Gepland' },
+  bezig:    { bg: 'var(--yellow-bg)', text: 'var(--yellow)', dot: 'var(--yellow)', label: 'Bezig' },
+  klaar:    { bg: 'var(--green-bg)',  text: 'var(--green)',  dot: 'var(--green)',  label: 'Klaar' },
 }
 
 // ─── component ──────────────────────────────────────────────────────────────
@@ -148,7 +149,7 @@ function Planning() {
   const meldCascade = (verschoven?: VerschovenTaak[]) => {
     if (!verschoven || verschoven.length === 0) return
     setCascadeBericht(
-      `⛓️ ${verschoven.length} ${verschoven.length === 1 ? 'taak is' : 'taken zijn'} automatisch mee verschoven: ` +
+      `${verschoven.length} ${verschoven.length === 1 ? 'taak is' : 'taken zijn'} automatisch mee verschoven: ` +
       verschoven.map(v => `${v.naam} → ${v.nieuwe_start} t/m ${v.nieuwe_eind}`).join(' · ')
     )
   }
@@ -256,10 +257,12 @@ function Planning() {
               : 'Ontvang planningswijzigingen als melding op dit apparaat'}
             style={{ padding: '8px 14px', fontSize: 13, flexShrink: 0 }}
           >
-            {push.status === 'aan' && '🔔 Push-meldingen aan'}
-            {push.status === 'uit' && '🔕 Zet push-meldingen aan'}
-            {push.status === 'bezig' && '⏳ Bezig...'}
-            {push.status === 'geweigerd' && '🔕 Meldingen geblokkeerd'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {push.status === 'aan' && <><Bell size={14} /> Push-meldingen aan</>}
+              {push.status === 'uit' && <><BellOff size={14} /> Zet push-meldingen aan</>}
+              {push.status === 'bezig' && 'Bezig...'}
+              {push.status === 'geweigerd' && <><BellOff size={14} /> Meldingen geblokkeerd</>}
+            </span>
           </button>
         )}
       </div>
@@ -267,20 +270,24 @@ function Planning() {
       {/* Cascade-banner: toont wat er automatisch mee verschoven is */}
       {cascadeBericht && (
         <div className="card" style={{
-          marginBottom: 20, borderLeft: '4px solid var(--teal)',
+          marginBottom: 20, borderLeft: '3px solid var(--blue)',
           display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center',
         }}>
-          <span style={{ fontSize: 13, color: 'var(--text)' }}>{cascadeBericht}</span>
+          <span style={{ fontSize: 13, color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Link2 size={15} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+            {cascadeBericht}
+          </span>
           <button className="secondary" onClick={() => setCascadeBericht(null)}
-            style={{ padding: '4px 10px', fontSize: 12, flexShrink: 0 }}>✕</button>
+            style={{ padding: '4px 10px', fontSize: 12, flexShrink: 0 }}><X size={13} /></button>
         </div>
       )}
 
       {/* Voorgestelde wijzigingen — alleen de zender ziet en bevestigt zijn eigen voorstellen */}
       {voorstellen.length > 0 && (
-        <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid var(--purple)' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-            📥 Voorgestelde wijzigingen ({voorstellen.length})
+        <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--navy)' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Inbox size={16} style={{ color: 'var(--navy)' }} />
+            Voorgestelde wijzigingen ({voorstellen.length})
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 14 }}>
             Door AI herkend uit je berichten. Bevestig om de planning aan te passen, of wijs af.
@@ -301,9 +308,10 @@ function Planning() {
                 }}>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
                     <span style={{
-                      background: isAanmaken ? '#1e1b4b' : '#1e3a5f',
-                      color: isAanmaken ? '#a5b4fc' : '#7dd3fc',
+                      background: isAanmaken ? 'var(--green-bg)' : 'var(--blue-bg)',
+                      color: isAanmaken ? 'var(--green)' : 'var(--blue)',
                       borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700,
+                      letterSpacing: 0.4,
                     }}>
                       {isAanmaken ? 'NIEUWE TAAK' : 'WIJZIGING'}
                     </span>
@@ -314,14 +322,13 @@ function Planning() {
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
                     {p.samenvatting || p.naam || 'Voorstel'}
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                    {p.naam && <span>📋 {p.naam} </span>}
-                    {periode && <span> · 📅 {periode}</span>}
-                    {p.toegewezen_aan && <span> · 👤 {p.toegewezen_aan}</span>}
+                  <div style={{ fontSize: 12, color: 'var(--text-sub)', marginBottom: 4 }}>
+                    {[p.naam, periode, p.toegewezen_aan].filter(Boolean).join('  ·  ')}
                   </div>
                   {p.komt_na && p.komt_na.length > 0 && (
-                    <div style={{ fontSize: 12, color: '#7dd3fc', marginBottom: 4 }}>
-                      ⛓️ Komt na: {p.komt_na
+                    <div style={{ fontSize: 12, color: 'var(--blue)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Link2 size={12} style={{ flexShrink: 0 }} />
+                      Komt na: {p.komt_na
                         .map(id => taken.find(t => t.id === id)?.naam || 'onbekende taak')
                         .join(', ')} — schuift automatisch mee bij uitloop
                     </div>
@@ -334,12 +341,13 @@ function Planning() {
                       onClick={() => bevestigVoorstel(v.id)}
                       disabled={bezigId === v.id}
                       style={{
-                        background: '#15803d', color: '#fff', border: 'none',
-                        borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 700,
+                        background: 'var(--green)', color: '#fff', border: 'none',
+                        borderRadius: 6, padding: '7px 16px', fontSize: 13, fontWeight: 600,
                         cursor: bezigId === v.id ? 'wait' : 'pointer', opacity: bezigId === v.id ? 0.6 : 1,
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
                       }}
                     >
-                      ✓ Bevestig
+                      <Check size={14} /> Bevestig
                     </button>
                     <button
                       className="secondary"
@@ -347,7 +355,7 @@ function Planning() {
                       disabled={bezigId === v.id}
                       style={{ padding: '7px 16px', fontSize: 13 }}
                     >
-                      ✕ Afwijzen
+                      Afwijzen
                     </button>
                   </div>
                 </div>
@@ -361,10 +369,12 @@ function Planning() {
       {meldingen.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>🔔 Meldingen</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Bell size={16} style={{ color: 'var(--navy)' }} /> Meldingen
+            </span>
             {ongelezenMeldingen.length > 0 && (
               <span style={{
-                background: 'var(--purple)', color: '#fff', borderRadius: 20,
+                background: 'var(--navy)', color: '#fff', borderRadius: 20,
                 padding: '1px 9px', fontSize: 12, fontWeight: 700,
               }}>
                 {ongelezenMeldingen.length} nieuw
@@ -377,14 +387,14 @@ function Planning() {
                 key={m.id}
                 onClick={() => !m.gelezen && markeerGelezen(m.id)}
                 style={{
-                  background: m.gelezen ? 'var(--bg-white)' : '#1e1b4b',
-                  border: '1px solid var(--border)',
-                  borderRadius: 8, padding: '9px 12px',
+                  background: m.gelezen ? 'var(--bg-white)' : 'var(--blue-bg)',
+                  border: `1px solid ${m.gelezen ? 'var(--border)' : 'var(--blue)'}`,
+                  borderRadius: 6, padding: '9px 12px',
                   cursor: m.gelezen ? 'default' : 'pointer',
                   display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center',
                 }}
               >
-                <span style={{ fontSize: 13, color: m.gelezen ? 'var(--text-muted)' : '#c7d2fe' }}>
+                <span style={{ fontSize: 13, color: m.gelezen ? 'var(--text-muted)' : 'var(--text)' }}>
                   {m.tekst}
                 </span>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
@@ -490,9 +500,9 @@ function Planning() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Taken deze week', waarde: weekStats.totaal, kleur: 'var(--text)' },
-          { label: 'Gepland', waarde: weekStats.gepland, kleur: '#a5b4fc' },
-          { label: 'Bezig', waarde: weekStats.bezig, kleur: '#7dd3fc' },
-          { label: 'Klaar', waarde: weekStats.klaar, kleur: '#86efac' },
+          { label: 'Gepland', waarde: weekStats.gepland, kleur: 'var(--blue)' },
+          { label: 'Bezig', waarde: weekStats.bezig, kleur: 'var(--yellow)' },
+          { label: 'Klaar', waarde: weekStats.klaar, kleur: 'var(--green)' },
         ].map(stat => (
           <div key={stat.label} className="card" style={{ padding: '14px 18px', marginBottom: 0 }}>
             <div style={{ fontSize: 26, fontWeight: 700, color: stat.kleur }}>{stat.waarde}</div>
@@ -603,7 +613,7 @@ function Planning() {
                                 alignItems: 'center',
                                 gap: 4,
                               }}>
-                                <span>👤</span>
+                                <User size={11} style={{ flexShrink: 0 }} />
                                 <span>{taak.toegewezen_aan}</span>
                               </div>
                             )}
@@ -657,17 +667,18 @@ function Planning() {
             style={{ width: 'min(500px, 92vw)', maxHeight: '80vh', overflowY: 'auto', marginBottom: 0 }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
-                🔗 {geselecteerdeTaak.naam}
+              <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Link2 size={17} style={{ color: 'var(--navy)', flexShrink: 0 }} />
+                {geselecteerdeTaak.naam}
               </div>
               <button className="secondary" onClick={() => setGeselecteerdeTaak(null)}
-                style={{ padding: '4px 10px', fontSize: 12 }}>✕</button>
+                style={{ padding: '4px 10px', fontSize: 12 }}><X size={13} /></button>
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
               {geselecteerdeTaak.startdatum
                 ? `${geselecteerdeTaak.startdatum.slice(0, 10)} t/m ${(geselecteerdeTaak.einddatum || geselecteerdeTaak.startdatum).slice(0, 10)}`
                 : 'Nog geen datum'}
-              {geselecteerdeTaak.toegewezen_aan && ` · 👤 ${geselecteerdeTaak.toegewezen_aan}`}
+              {geselecteerdeTaak.toegewezen_aan && ` · ${geselecteerdeTaak.toegewezen_aan}`}
             </div>
 
             {afhankelijkheden === null ? (
@@ -702,7 +713,7 @@ function Planning() {
                           onClick={() => verwijderVoorganger(v.id)}
                           style={{ padding: '3px 9px', fontSize: 12, flexShrink: 0 }}
                         >
-                          ✕
+                          <X size={12} />
                         </button>
                       </div>
                     ))}
@@ -754,9 +765,11 @@ function Planning() {
                       {afhankelijkheden.volgers.map(v => (
                         <div key={v.id} style={{
                           background: 'var(--bg-white)', border: '1px solid var(--border)',
-                          borderRadius: 8, padding: '8px 12px', fontSize: 13, color: 'var(--text-muted)',
+                          borderRadius: 6, padding: '8px 12px', fontSize: 13, color: 'var(--text-sub)',
+                          display: 'flex', alignItems: 'center', gap: 8,
                         }}>
-                          ⛓️ {v.naam}
+                          <Link2 size={13} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+                          {v.naam}
                           {v.startdatum && ` · start ${v.startdatum}`}
                         </div>
                       ))}
