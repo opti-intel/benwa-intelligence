@@ -47,6 +47,24 @@ class TestAuthVereist:
         )
         assert response.status_code == 403
 
+    @pytest.mark.asyncio
+    async def test_planning_leegmaken_vereist_admin(self, ingestion_gateway_client):
+        response = await ingestion_gateway_client.post(
+            "/planning/leegmaken",
+            headers=_auth_headers(rol="medewerker"),
+            json={"bevestiging": "LEEGMAKEN"},
+        )
+        assert response.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_planning_leegmaken_vereist_bevestigingswoord(self, ingestion_gateway_client):
+        response = await ingestion_gateway_client.post(
+            "/planning/leegmaken",
+            headers=_auth_headers(rol="admin"),
+            json={"bevestiging": "verkeerd"},
+        )
+        assert response.status_code == 422
+
 
 class TestIngestEndpoint:
     """Tests for POST /ingest."""

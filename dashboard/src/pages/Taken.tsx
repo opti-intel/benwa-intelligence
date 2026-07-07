@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User } from 'lucide-react'
-import { type Taak, type TaakStatus, takenApi } from '../hooks/useApi'
+import { User, Trash2 } from 'lucide-react'
+import { type Taak, type TaakStatus, takenApi, apiPost } from '../hooks/useApi'
+import { useAuth } from '../hooks/useAuth'
 
 const statusLabels: Record<TaakStatus, string> = {
   gepland: 'Gepland',
@@ -24,6 +25,30 @@ function Taken() {
   const [zoek, setZoek] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editTaak, setEditTaak] = useState<Taak | null>(null)
+
+  // Planning leegmaken (alleen admin)
+  const { isAdmin } = useAuth()
+  const [leegmaakOpen, setLeegmaakOpen] = useState(false)
+  const [leegmaakWoord, setLeegmaakWoord] = useState('')
+  const [leegmaakBezig, setLeegmaakBezig] = useState(false)
+
+  const maakPlanningLeeg = async () => {
+    if (leegmaakWoord !== 'LEEGMAKEN') return
+    setLeegmaakBezig(true)
+    try {
+      const res = await apiPost<{ ok: boolean; taken_gewist: number }>(
+        '/api/ingestion/planning/leegmaken', { bevestiging: 'LEEGMAKEN' },
+      )
+      alert(`Planning leeggemaakt: ${res.taken_gewist} taken gewist.`)
+      setLeegmaakOpen(false)
+      setLeegmaakWoord('')
+      await fetchTaken()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Leegmaken mislukt')
+    } finally {
+      setLeegmaakBezig(false)
+    }
+  }
 
   // Form state
   const [formNaam, setFormNaam] = useState('')
@@ -141,10 +166,77 @@ function Taken() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>Taken</h2>
-        <p>Beheer en volg projecttaken</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div>
+          <h2>Taken</h2>
+          <p>Beheer en volg projecttaken</p>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={() => setLeegmaakOpen(true)}
+            style={{
+              background: 'var(--red-bg)', color: 'var(--red)', border: '1px solid var(--red)',
+              borderRadius: 6, padding: '8px 14px', fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
+            }}
+          >
+            <Trash2 size={14} /> Planning leegmaken
+          </button>
+        )}
       </div>
+
+      {/* Bevestigingsvenster: planning leegmaken */}
+      {leegmaakOpen && (
+        <div
+          onClick={() => setLeegmaakOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+          }}
+        >
+          <div onClick={e => e.stopPropagation()} className="card" style={{ width: 'min(440px, 92vw)', marginBottom: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--red)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Trash2 size={16} /> Planning leegmaken
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-sub)', lineHeight: 1.6, marginBottom: 14 }}>
+              Dit wist <strong>alle taken</strong> ({taken.length} stuks), volgorde-relaties,
+              openstaande AI-voorstellen en meldingen. Chatberichten en gebruikers blijven staan.
+              <strong> Dit kan niet ongedaan worden gemaakt.</strong>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text)', marginBottom: 6 }}>
+              Typ <strong>LEEGMAKEN</strong> om te bevestigen:
+            </div>
+            <input
+              type="text"
+              value={leegmaakWoord}
+              onChange={e => setLeegmaakWoord(e.target.value)}
+              placeholder="LEEGMAKEN"
+              style={{
+                width: '100%', padding: '9px 12px', borderRadius: 6, fontSize: 14,
+                border: '1px solid var(--border)', marginBottom: 14, boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="secondary" onClick={() => { setLeegmaakOpen(false); setLeegmaakWoord('') }}
+                style={{ padding: '8px 16px', fontSize: 13 }}>
+                Annuleren
+              </button>
+              <button
+                onClick={maakPlanningLeeg}
+                disabled={leegmaakWoord !== 'LEEGMAKEN' || leegmaakBezig}
+                style={{
+                  background: 'var(--red)', color: '#fff', border: 'none', borderRadius: 6,
+                  padding: '8px 16px', fontSize: 13, fontWeight: 600,
+                  cursor: leegmaakWoord === 'LEEGMAKEN' && !leegmaakBezig ? 'pointer' : 'not-allowed',
+                  opacity: leegmaakWoord === 'LEEGMAKEN' && !leegmaakBezig ? 1 : 0.5,
+                }}
+              >
+                {leegmaakBezig ? 'Bezig...' : 'Definitief wissen'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Zoek + status filter + nieuwe taak */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>

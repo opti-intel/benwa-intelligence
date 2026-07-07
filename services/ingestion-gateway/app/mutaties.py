@@ -18,7 +18,9 @@ from uuid import uuid4
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
-from .auth import get_huidige_gebruiker
+from fastapi import Body
+
+from .auth import get_huidige_gebruiker, vereist_admin
 from .cascade import verwerk_voorstel_relaties
 
 router = APIRouter(tags=["mutaties"])
@@ -284,6 +286,41 @@ async def wijs_mutatie_af(voorstel_id: str, gebruiker: dict = Depends(get_huidig
     finally:
         await conn.close()
     return {"ok": True, "status": "afgewezen"}
+
+
+# ---------------------------------------------------------------------------
+# Planning leegmaken (alleen admin)
+# ---------------------------------------------------------------------------
+
+@router.post("/planning/leegmaken")
+async def planning_leegmaken(bevestiging: str = Body(..., embed=True),
+                             gebruiker: dict = Depends(vereist_admin)):
+    """Wist ALLE taken, volgorde-relaties, openstaande voorstellen en
+    meldingen. Definitief — bedoeld om testdata op te ruimen.
+    Vereist het bevestigingswoord 'LEEGMAKEN' om ongelukken te voorkomen."""
+    if bevestiging != "LEEGMAKEN":
+        raise HTTPException(
+            status_code=422,
+            detail="Typ LEEGMAKEN als bevestiging om de planning te wissen.",
+        )
+
+    conn = await asyncpg.connect(_raw_db_url())
+    try:
+        aantal_taken = await conn.fetchval("SELECT COUNT(*) FROM tasks") or 0
+        await conn.execute("DELETE FROM meldingen")
+        await conn.execute("DELETE FROM voorgestelde_mutaties WHERE status = 'pending'")
+        await conn.execute("DELETE FROM taak_afhankelijkheden")
+        await conn.execute("DELETE FROM tasks")
+        await conn.execute(
+            """INSERT INTO audit_log (gebruiker_naam, actie, details)
+               VALUES ($1, 'planning_leeggemaakt', $2)""",
+            gebruiker["naam"], f"{aantal_taken} taken gewist (incl. relaties, voorstellen en meldingen)",
+        )
+    finally:
+        await conn.close()
+
+    print(f"🗑️ Planning leeggemaakt door {gebruiker['naam']}: {aantal_taken} taken", flush=True)
+    return {"ok": True, "taken_gewist": aantal_taken}
 
 
 # ---------------------------------------------------------------------------
