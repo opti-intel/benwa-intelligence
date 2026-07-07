@@ -90,7 +90,7 @@ function Landing({ onInloggen }: { onInloggen: () => void }) {
           © {new Date().getFullYear()} Opti-Intel · Opti Corporation
         </span>
         <a
-          href="mailto:info@optiintel.nl"
+          href="mailto:info@benwa-intelligence.com"
           style={{
             fontSize: 13, color: 'var(--navy)', textDecoration: 'none', fontWeight: 600,
             display: 'inline-flex', alignItems: 'center', gap: 6,
