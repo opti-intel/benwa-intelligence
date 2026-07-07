@@ -2,7 +2,7 @@
   "name": "Opti Intel",
   "short_name": "Opti Intel",
   "description": "Intern projectbeheer platform",
-  "start_url": "/",
+  "start_url": "/?app=1",
   "display": "standalone",
   "background_color": "#f5f6fa",
   "theme_color": "#1e3f6e",

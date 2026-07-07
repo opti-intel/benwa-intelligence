@@ -10,7 +10,16 @@ import Resources from './pages/Resources'
 import PdfInvoer from './pages/PdfInvoer'
 import Gebruikers from './pages/Gebruikers'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
 import { AuthContext, useAuthState } from './hooks/useAuth'
+
+// Draait de app als geïnstalleerde webapp (beginscherm) of via het
+// app-startadres (?app=1)? Dan de publieke landingspagina overslaan.
+function isWebapp(): boolean {
+  if (window.matchMedia('(display-mode: standalone)').matches) return true
+  if ((navigator as { standalone?: boolean }).standalone === true) return true // iOS Safari
+  return new URLSearchParams(window.location.search).has('app')
+}
 
 const navItems = [
   { to: '/',           label: 'Overzicht',   icon: LayoutDashboard, adminOnly: false },
@@ -32,6 +41,7 @@ function rolLabel(rol: string) {
 function App() {
   const auth = useAuthState()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [naarLogin, setNaarLogin] = useState(isWebapp())
 
   // Sluit menu bij route-wisseling
   const location = useLocation()
@@ -50,11 +60,12 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [menuOpen])
 
-  // Niet ingelogd → login pagina
+  // Niet ingelogd: webapp-gebruikers direct naar login,
+  // browserbezoekers eerst de publieke landingspagina.
   if (!auth.gebruiker) {
     return (
       <AuthContext.Provider value={auth}>
-        <Login />
+        {naarLogin ? <Login /> : <Landing onInloggen={() => setNaarLogin(true)} />}
       </AuthContext.Provider>
     )
   }
@@ -113,7 +124,7 @@ function App() {
         </button>
       </div>
 
-      <div className="sidebar-footer">v0.6.0</div>
+      <div className="sidebar-footer">v0.6.1</div>
     </>
   )
 
