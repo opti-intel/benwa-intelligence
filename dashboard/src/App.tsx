@@ -16,6 +16,7 @@ import { AuthContext, useAuthState } from './hooks/useAuth'
 // Draait de app als geïnstalleerde webapp (beginscherm) of via het
 // app-startadres (?app=1)? Dan de publieke landingspagina overslaan.
 function isWebapp(): boolean {
+  if (window.location.hostname.startsWith('app.')) return true // app.opti-intel.org = altijd direct naar login
   if (window.matchMedia('(display-mode: standalone)').matches) return true
   if ((navigator as { standalone?: boolean }).standalone === true) return true // iOS Safari
   return new URLSearchParams(window.location.search).has('app')

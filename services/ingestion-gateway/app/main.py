@@ -292,6 +292,7 @@ app = FastAPI(
 # Extra origins (bv. een testomgeving) kun je toevoegen via de
 # environment variable CORS_EXTRA_ORIGINS (kommagescheiden).
 _cors_origins = [
+    "https://app.opti-intel.org",
     "https://www.opti-intel.org",
     "https://opti-intel.org",
     "https://benwa-intelligence-production.up.railway.app",
