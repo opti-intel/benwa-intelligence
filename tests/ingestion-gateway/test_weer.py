@@ -19,7 +19,7 @@ class TestAdres:
         assert "adres" in VOORSTEL_SCHEMA["required"]
 
     def test_locaties_in_zelfde_buurt_delen_verwachting(self):
-        assert rond_locatie(51.3712, 4.9945) == rond_locatie(51.3689, 4.9958)
+        assert rond_locatie(51.3712, 4.9912) == rond_locatie(51.3689, 4.9938)
         assert rond_locatie(51.37, 4.99) != rond_locatie(51.56, 5.09)
 
 # Referentie: wo 8 juli 2026 t/m ma 13 juli 2026 (za 11 / zo 12 = weekend)
