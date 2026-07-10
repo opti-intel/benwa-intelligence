@@ -170,18 +170,32 @@ async def _maak_meldingen(conn, gebruiker_ids: set, tekst: str, task_id: str, vo
 # Voorstellen-endpoints
 # ---------------------------------------------------------------------------
 
+def _is_beheerder(gebruiker: dict) -> bool:
+    return gebruiker.get("rol") in ("admin", "aannemer")
+
+
 @router.get("/mutaties")
 async def lijst_mutaties(gebruiker: dict = Depends(get_huidige_gebruiker)):
-    """Geeft de openstaande (pending) voorstellen van de ingelogde zender terug."""
+    """Geeft de openstaande (pending) voorstellen van de ingelogde zender terug.
+    Beheerders zien ook systeemvoorstellen (zoals weerwaarschuwingen)."""
     conn = await asyncpg.connect(_raw_db_url())
     try:
-        rows = await conn.fetch(
-            """SELECT id, bron, afzender, ruwe_tekst, voorstel, aangemaakt_op
-               FROM voorgestelde_mutaties
-               WHERE afzender_id = $1 AND status = 'pending'
-               ORDER BY aangemaakt_op DESC""",
-            gebruiker["id"],
-        )
+        if _is_beheerder(gebruiker):
+            rows = await conn.fetch(
+                """SELECT id, bron, afzender, ruwe_tekst, voorstel, aangemaakt_op
+                   FROM voorgestelde_mutaties
+                   WHERE (afzender_id = $1 OR afzender_id IS NULL) AND status = 'pending'
+                   ORDER BY aangemaakt_op DESC""",
+                gebruiker["id"],
+            )
+        else:
+            rows = await conn.fetch(
+                """SELECT id, bron, afzender, ruwe_tekst, voorstel, aangemaakt_op
+                   FROM voorgestelde_mutaties
+                   WHERE afzender_id = $1 AND status = 'pending'
+                   ORDER BY aangemaakt_op DESC""",
+                gebruiker["id"],
+            )
     finally:
         await conn.close()
     return [
@@ -206,7 +220,11 @@ async def _haal_pending_voorstel(conn, voorstel_id: str, gebruiker: dict) -> dic
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Voorstel niet gevonden")
-    if str(row["afzender_id"]) != str(gebruiker["id"]):
+    if row["afzender_id"] is None:
+        # Systeemvoorstel (bv. weerbewaking): alleen beheerders mogen beslissen.
+        if not _is_beheerder(gebruiker):
+            raise HTTPException(status_code=403, detail="Alleen een beheerder mag systeemvoorstellen behandelen")
+    elif str(row["afzender_id"]) != str(gebruiker["id"]):
         raise HTTPException(status_code=403, detail="Alleen de zender mag dit voorstel behandelen")
     if row["status"] != "pending":
         raise HTTPException(status_code=409, detail=f"Voorstel is al {row['status']}")

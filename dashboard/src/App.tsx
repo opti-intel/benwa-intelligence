@@ -125,7 +125,7 @@ function App() {
         </button>
       </div>
 
-      <div className="sidebar-footer">v0.6.1</div>
+      <div className="sidebar-footer">v0.7.0</div>
     </>
   )
 

@@ -35,6 +35,7 @@ from .nl_parser import parse_bericht
 from .claude_parser import interpreteer_bericht
 from .cascade import router as cascade_router, verwerk_voorstel_relaties
 from .push import router as push_router, CREATE_PUSH_ABONNEMENTEN_TABLE
+from .weer import router as weer_router, weerbewaking_loop
 from .mutaties import (
     router as mutaties_router,
     pas_mutatie_toe,
@@ -275,7 +276,11 @@ async def lifespan(app: FastAPI):
         _kafka_producer = await get_kafka_producer()
     except Exception:
         _kafka_producer = None
+    # Weerbewaking op de achtergrond: controleert elke 6 uur of gepland
+    # buitenwerk in de knel komt en zet dan verschuifvoorstellen klaar.
+    weer_taak = asyncio.create_task(weerbewaking_loop())
     yield
+    weer_taak.cancel()
     if _kafka_producer is not None:
         await _kafka_producer.stop()
 
@@ -380,6 +385,7 @@ app.include_router(tasks_router)
 app.include_router(mutaties_router)
 app.include_router(cascade_router)
 app.include_router(push_router)
+app.include_router(weer_router)
 
 
 # ---------------------------------------------------------------------------

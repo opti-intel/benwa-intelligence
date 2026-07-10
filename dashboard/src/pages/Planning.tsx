@@ -327,6 +327,15 @@ function Planning() {
                     }}>
                       {isAanmaken ? 'NIEUWE TAAK' : 'WIJZIGING'}
                     </span>
+                    {v.bron === 'weer' && (
+                      <span style={{
+                        background: 'var(--yellow-bg)', color: 'var(--yellow)',
+                        borderRadius: 4, padding: '2px 8px', fontSize: 11, fontWeight: 700,
+                        letterSpacing: 0.4,
+                      }}>
+                        WEERBEWAKING
+                      </span>
+                    )}
                     <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                       vertrouwen {Math.round((p.vertrouwen ?? 0) * 100)}%
                     </span>
