@@ -171,6 +171,18 @@ CREATE_MELDINGEN_TABLE = """
     )
 """
 
+# Geocoding-cache: adres -> coördinaten, zodat we elk bouwplaatsadres maar
+# één keer hoeven op te zoeken (gebruikt door de weerbewaking in weer.py).
+CREATE_ADRES_LOCATIES_TABLE = """
+    CREATE TABLE IF NOT EXISTS adres_locaties (
+        adres TEXT PRIMARY KEY,
+        lat DOUBLE PRECISION,
+        lon DOUBLE PRECISION,
+        gevonden BOOLEAN DEFAULT TRUE,
+        opgezocht_op TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )
+"""
+
 # Volgorde-relaties tussen taken: de volger kan pas beginnen als de
 # voorganger klaar is. Gebruikt door cascade.py om taken automatisch
 # door te schuiven als een voorganger wordt verzet.
@@ -236,6 +248,9 @@ async def ensure_tables():
             await conn.execute(CREATE_MELDINGEN_TABLE)
             await conn.execute(CREATE_TAAK_AFHANKELIJKHEDEN_TABLE)
             await conn.execute(CREATE_PUSH_ABONNEMENTEN_TABLE)
+            await conn.execute(CREATE_ADRES_LOCATIES_TABLE)
+            # Adresveld voor bestaande installaties (weer per bouwplaats).
+            await conn.execute("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS adres VARCHAR(255) DEFAULT ''")
             # Create default admin account if no users exist yet.
             # Het wachtwoord MOET via de env-var ADMIN_INIT_WACHTWOORD komen;
             # geen hardcoded default in de broncode. Zonder die var slaan we

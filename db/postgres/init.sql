@@ -90,6 +90,7 @@ CREATE TABLE tasks (
     startdatum DATE,
     einddatum DATE,
     toegewezen_aan VARCHAR(255) DEFAULT '',
+    adres VARCHAR(255) DEFAULT '',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -112,3 +113,12 @@ CREATE TABLE taak_afhankelijkheden (
     PRIMARY KEY (voorganger_id, volger_id)
 );
 CREATE INDEX idx_afhankelijkheden_volger ON taak_afhankelijkheden(volger_id);
+
+-- Geocoding-cache voor de weerbewaking (adres -> coördinaten)
+CREATE TABLE adres_locaties (
+    adres TEXT PRIMARY KEY,
+    lat DOUBLE PRECISION,
+    lon DOUBLE PRECISION,
+    gevonden BOOLEAN DEFAULT TRUE,
+    opgezocht_op TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

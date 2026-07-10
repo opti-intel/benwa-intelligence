@@ -94,13 +94,64 @@ def bereken_verschuiving(startdatum: date, einddatum: date, slechte_dagen: dict)
     return nieuwe_start, nieuwe_eind, reden
 
 
+def rond_locatie(lat: float, lon: float) -> tuple:
+    """Rond coördinaten af op ~1 km zodat adressen in dezelfde buurt één
+    weersverwachting delen (scheelt onnodige API-aanroepen)."""
+    return (round(lat, 2), round(lon, 2))
+
+
+def standaard_locatie() -> tuple:
+    return (
+        float(os.environ.get("WEER_LAT", "51.37")),
+        float(os.environ.get("WEER_LON", "4.99")),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Geocoding: bouwplaatsadres -> coördinaten (OpenStreetMap/Nominatim, gratis)
+# met cache in de database zodat elk adres maar één keer wordt opgezocht.
+# ---------------------------------------------------------------------------
+
+async def geocodeer(conn: asyncpg.Connection, adres: str) -> tuple | None:
+    adres = (adres or "").strip()
+    if not adres:
+        return None
+
+    rij = await conn.fetchrow(
+        "SELECT lat, lon, gevonden FROM adres_locaties WHERE adres = $1", adres.lower()
+    )
+    if rij is not None:
+        return (rij["lat"], rij["lon"]) if rij["gevonden"] else None
+
+    lat = lon = None
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={"q": adres, "format": "json", "limit": 1, "countrycodes": "nl,be"},
+                headers={"User-Agent": "Opti-Intel weerbewaking (info@benwa-intelligence.com)"},
+            )
+            r.raise_for_status()
+            resultaten = r.json()
+            if resultaten:
+                lat, lon = float(resultaten[0]["lat"]), float(resultaten[0]["lon"])
+    except Exception as e:
+        print(f"⚠️ Geocoding mislukt voor '{adres}': {e}", flush=True)
+        return None  # niet cachen; volgende keer opnieuw proberen
+
+    await conn.execute(
+        """INSERT INTO adres_locaties (adres, lat, lon, gevonden)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (adres) DO NOTHING""",
+        adres.lower(), lat, lon, lat is not None,
+    )
+    return (lat, lon) if lat is not None else None
+
+
 # ---------------------------------------------------------------------------
 # Weersverwachting ophalen (Open-Meteo, gratis)
 # ---------------------------------------------------------------------------
 
-async def haal_verwachting() -> list:
-    lat = os.environ.get("WEER_LAT", "51.37")
-    lon = os.environ.get("WEER_LON", "4.99")
+async def haal_verwachting(lat: float, lon: float) -> list:
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
@@ -132,30 +183,51 @@ def _raw_db_url() -> str:
 
 
 async def controleer_weer_en_stel_voor() -> list:
-    """Voer één weercontrole uit. Geeft de aangemaakte voorstellen terug."""
-    verwachting = await haal_verwachting()
-    slechte_dagen = onwerkbare_dagen(verwachting)
-    if not slechte_dagen:
-        return []
+    """Voer één weercontrole uit, per bouwplaatslocatie.
 
+    Taken met een adres krijgen de verwachting van hun eigen bouwplaats;
+    taken zonder (vindbaar) adres vallen terug op de standaardlocatie.
+    Geeft de aangemaakte voorstellen terug.
+    """
     conn = await asyncpg.connect(_raw_db_url())
     aangemaakt = []
     try:
         taken = await conn.fetch(
-            """SELECT id, naam, beschrijving, startdatum, einddatum, toegewezen_aan
+            """SELECT id, naam, beschrijving, adres, startdatum, einddatum, toegewezen_aan
                FROM tasks
                WHERE status = 'gepland' AND startdatum IS NOT NULL
                  AND startdatum <= $1""",
             date.today() + timedelta(days=VOORUITBLIK_DAGEN),
         )
-        for t in taken:
-            if not is_buitenwerk(t["naam"], t["beschrijving"] or ""):
+
+        # Bepaal per taak de locatie (adres -> coördinaten, met cache) en
+        # groepeer op afgeronde locatie zodat we per buurt één keer het weer ophalen.
+        buiten_taken = [t for t in taken if is_buitenwerk(t["naam"], t["beschrijving"] or "")]
+        taak_locatie: dict = {}
+        for t in buiten_taken:
+            coords = await geocodeer(conn, t["adres"] or "")
+            taak_locatie[t["id"]] = rond_locatie(*coords) if coords else rond_locatie(*standaard_locatie())
+
+        slecht_per_locatie: dict = {}
+        for locatie in set(taak_locatie.values()):
+            try:
+                verwachting = await haal_verwachting(*locatie)
+                slecht_per_locatie[locatie] = onwerkbare_dagen(verwachting)
+            except Exception as e:
+                print(f"⚠️ Weer ophalen mislukt voor {locatie}: {e}", flush=True)
+                slecht_per_locatie[locatie] = {}
+
+        for t in buiten_taken:
+            slechte_dagen = slecht_per_locatie.get(taak_locatie[t["id"]], {})
+            if not slechte_dagen:
                 continue
             nieuwe_start, nieuwe_eind, reden = bereken_verschuiving(
                 t["startdatum"], t["einddatum"], slechte_dagen
             )
             if nieuwe_start is None:
                 continue
+            if t["adres"]:
+                reden = f"{t['adres']} — {reden}"
 
             # Niet dubbel voorstellen: sla over als er al een openstaand
             # weer-voorstel voor deze taak is.

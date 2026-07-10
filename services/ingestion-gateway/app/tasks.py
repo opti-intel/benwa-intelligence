@@ -43,6 +43,7 @@ class TaskBase(BaseModel):
     startdatum: Optional[str] = None
     einddatum: Optional[str] = None
     toegewezen_aan: str = ""
+    adres: str = ""
 
 
 class TaskCreate(TaskBase):
@@ -73,12 +74,12 @@ async def list_tasks(
     """Return all tasks, optionally filtered by status."""
     if status:
         result = await db.execute(
-            text("SELECT id, naam, beschrijving, status, startdatum::text, einddatum::text, toegewezen_aan FROM tasks WHERE status = :status ORDER BY startdatum ASC NULLS LAST"),
+            text("SELECT id, naam, beschrijving, status, startdatum::text, einddatum::text, toegewezen_aan, adres FROM tasks WHERE status = :status ORDER BY startdatum ASC NULLS LAST"),
             {"status": status},
         )
     else:
         result = await db.execute(
-            text("SELECT id, naam, beschrijving, status, startdatum::text, einddatum::text, toegewezen_aan FROM tasks ORDER BY startdatum ASC NULLS LAST"),
+            text("SELECT id, naam, beschrijving, status, startdatum::text, einddatum::text, toegewezen_aan, adres FROM tasks ORDER BY startdatum ASC NULLS LAST"),
         )
     rows = result.mappings().all()
     return [
@@ -90,6 +91,7 @@ async def list_tasks(
             startdatum=r["startdatum"] or "",
             einddatum=r["einddatum"] or "",
             toegewezen_aan=r["toegewezen_aan"] or "",
+            adres=r["adres"] or "",
         )
         for r in rows
     ]
@@ -102,8 +104,8 @@ async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db),
     task_id = task.id or str(uuid4())
     await db.execute(
         text("""
-            INSERT INTO tasks (id, naam, beschrijving, status, startdatum, einddatum, toegewezen_aan)
-            VALUES (:id, :naam, :beschrijving, :status, :startdatum, :einddatum, :toegewezen_aan)
+            INSERT INTO tasks (id, naam, beschrijving, status, startdatum, einddatum, toegewezen_aan, adres)
+            VALUES (:id, :naam, :beschrijving, :status, :startdatum, :einddatum, :toegewezen_aan, :adres)
         """),
         {
             "id": task_id,
@@ -113,6 +115,7 @@ async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db),
             "startdatum": _parse_date(task.startdatum),
             "einddatum": _parse_date(task.einddatum),
             "toegewezen_aan": task.toegewezen_aan,
+            "adres": task.adres,
         },
     )
     return TaskResponse(
@@ -123,6 +126,7 @@ async def create_task(task: TaskCreate, db: AsyncSession = Depends(get_db),
         startdatum=task.startdatum or "",
         einddatum=task.einddatum or "",
         toegewezen_aan=task.toegewezen_aan,
+        adres=task.adres,
     )
 
 
@@ -139,6 +143,7 @@ async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends
                 startdatum = :startdatum,
                 einddatum = :einddatum,
                 toegewezen_aan = :toegewezen_aan,
+                adres = :adres,
                 updated_at = NOW()
             WHERE id = :id
         """),
@@ -150,6 +155,7 @@ async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends
             "startdatum": _parse_date(task.startdatum),
             "einddatum": _parse_date(task.einddatum),
             "toegewezen_aan": task.toegewezen_aan,
+            "adres": task.adres,
         },
     )
     if result.rowcount == 0:
@@ -162,6 +168,7 @@ async def update_task(task_id: str, task: TaskUpdate, db: AsyncSession = Depends
         startdatum=task.startdatum or "",
         einddatum=task.einddatum or "",
         toegewezen_aan=task.toegewezen_aan,
+        adres=task.adres,
     )
 
 

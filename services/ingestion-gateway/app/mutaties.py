@@ -62,8 +62,8 @@ async def pas_mutatie_toe(conn: asyncpg.Connection, voorstel: dict, afzender_naa
             raise ValueError("Voorstel mist een taaknaam")
         task_id = uuid4()
         await conn.execute(
-            """INSERT INTO tasks (id, naam, beschrijving, status, startdatum, einddatum, toegewezen_aan)
-               VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING""",
+            """INSERT INTO tasks (id, naam, beschrijving, status, startdatum, einddatum, toegewezen_aan, adres)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO NOTHING""",
             task_id,
             naam,
             voorstel.get("beschrijving") or "",
@@ -71,6 +71,7 @@ async def pas_mutatie_toe(conn: asyncpg.Connection, voorstel: dict, afzender_naa
             _parse_date(voorstel.get("startdatum")),
             _parse_date(voorstel.get("einddatum")),
             voorstel.get("toegewezen_aan") or afzender_naam,
+            voorstel.get("adres") or "",
         )
         return str(task_id)
 
@@ -79,7 +80,7 @@ async def pas_mutatie_toe(conn: asyncpg.Connection, voorstel: dict, afzender_naa
         if not doel:
             raise ValueError("Wijzigingsvoorstel mist doel_taak_id")
         velden: dict = {}
-        for k in ("naam", "beschrijving", "status", "toegewezen_aan"):
+        for k in ("naam", "beschrijving", "status", "toegewezen_aan", "adres"):
             if voorstel.get(k) is not None:
                 velden[k] = voorstel[k]
         for k in ("startdatum", "einddatum"):

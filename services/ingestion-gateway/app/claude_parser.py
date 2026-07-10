@@ -60,6 +60,15 @@ VOORSTEL_SCHEMA = {
             "type": ["string", "null"],
             "description": "Naam van de persoon aan wie de taak toegewezen is, of null.",
         },
+        "adres": {
+            "type": ["string", "null"],
+            "description": (
+                "Adres of locatie van de bouwplaats als die in het bericht "
+                "staat (bv. 'Maurice Ravelstraat 5, Tilburg' of 'blok B "
+                "Ravels'). Wordt gebruikt om het weer op die plek te bewaken. "
+                "Null als er geen locatie genoemd wordt."
+            ),
+        },
         "komt_na": {
             "type": "array",
             "items": {"type": "string"},
@@ -95,6 +104,7 @@ VOORSTEL_SCHEMA = {
         "startdatum",
         "einddatum",
         "toegewezen_aan",
+        "adres",
         "komt_na",
         "vertrouwen",
         "samenvatting",

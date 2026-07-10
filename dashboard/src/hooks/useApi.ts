@@ -96,6 +96,7 @@ export interface Taak {
   startdatum: string
   einddatum: string
   toegewezen_aan: string
+  adres?: string
 }
 
 export type ResourceType = 'persoon' | 'apparatuur'

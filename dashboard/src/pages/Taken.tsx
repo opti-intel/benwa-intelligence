@@ -57,6 +57,7 @@ function Taken() {
   const [formStart, setFormStart] = useState('')
   const [formEind, setFormEind] = useState('')
   const [formToegewezen, setFormToegewezen] = useState('')
+  const [formAdres, setFormAdres] = useState('')
 
   const fetchTaken = useCallback(async () => {
     try {
@@ -101,6 +102,7 @@ function Taken() {
     setFormStart('')
     setFormEind('')
     setFormToegewezen('')
+    setFormAdres('')
     setModalOpen(true)
   }
 
@@ -112,6 +114,7 @@ function Taken() {
     setFormStart(taak.startdatum)
     setFormEind(taak.einddatum)
     setFormToegewezen(taak.toegewezen_aan)
+    setFormAdres(taak.adres || '')
     setModalOpen(true)
   }
 
@@ -125,6 +128,7 @@ function Taken() {
       startdatum: formStart,
       einddatum: formEind,
       toegewezen_aan: formToegewezen,
+      adres: formAdres,
     }
 
     try {
@@ -407,6 +411,16 @@ function Taken() {
                   placeholder="Naam bedrijf of medewerker"
                 />
               )}
+            </div>
+
+            <div className="form-group">
+              <label>Adres bouwplaats <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(voor de weerbewaking)</span></label>
+              <input
+                type="text"
+                value={formAdres}
+                onChange={e => setFormAdres(e.target.value)}
+                placeholder="bv. Maurice Ravelstraat 5, Tilburg"
+              />
             </div>
 
             <div className="modal-actions">

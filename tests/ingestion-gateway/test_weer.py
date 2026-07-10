@@ -9,7 +9,18 @@ SERVICES_DIR = os.path.join(REPO_ROOT, "services")
 sys.path.insert(0, os.path.join(SERVICES_DIR, "ingestion-gateway"))
 sys.path.insert(0, SERVICES_DIR)
 
-from app.weer import is_buitenwerk, onwerkbare_dagen, bereken_verschuiving
+from app.weer import is_buitenwerk, onwerkbare_dagen, bereken_verschuiving, rond_locatie
+from app.claude_parser import VOORSTEL_SCHEMA
+
+
+class TestAdres:
+    def test_adres_in_ai_schema(self):
+        assert "adres" in VOORSTEL_SCHEMA["properties"]
+        assert "adres" in VOORSTEL_SCHEMA["required"]
+
+    def test_locaties_in_zelfde_buurt_delen_verwachting(self):
+        assert rond_locatie(51.3712, 4.9945) == rond_locatie(51.3689, 4.9958)
+        assert rond_locatie(51.37, 4.99) != rond_locatie(51.56, 5.09)
 
 # Referentie: wo 8 juli 2026 t/m ma 13 juli 2026 (za 11 / zo 12 = weekend)
 WO = date(2026, 7, 8)
